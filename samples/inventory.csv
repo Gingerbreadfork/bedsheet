@@ -1,0 +1,50 @@
+sku,name,category,price,qty,restocked,supplier_city,active,notes
+SKU-10000,Brass hinge,Hardware,26.66,79,2026-01-24,Portland,false,
+SKU-10007,Oak dowel,Timber,98.78,344,2026-02-10,Leeds,true,
+SKU-10014,Linen thread,Textiles,59.67,269,2026-04-24,Kyoto,true,
+SKU-10021,Cast iron pan,Kitchen,18.98,451,2026-05-11,Tallinn,true,"Fragile, ship ""upright"""
+SKU-10028,Beeswax block,Finish,84.53,65,2026-01-25,Lisbon,false,
+SKU-10035,Copper rivet,Hardware,111.27,495,2026-09-08,Adelaide,true,
+SKU-10042,Walnut plank,Timber,130.85,334,2026-06-21,Bergen,true,
+SKU-10049,Steel ruler,Textiles,111.18,362,2026-03-04,Portland,true,"Two-line note
+second line here"
+SKU-10056,Hemp rope,Kitchen,140.54,445,2026-01-18,Leeds,false,
+SKU-10063,Cedar shingle,Finish,99.69,437,2026-08-01,Kyoto,true,Backordered
+SKU-10070,Glass jar,Hardware,155.56,136,2026-04-19,Tallinn,true,
+SKU-10077,Ceramic tile,Timber,175.35,280,2026-03-21,Lisbon,true,
+SKU-10084,Wool felt,Textiles,2.48,426,2026-06-03,Adelaide,false,"Contact: sales@example.com, ext 42"
+SKU-10091,Leather strap,Kitchen,86.75,42,2026-06-12,Bergen,true,
+SKU-10098,Tin lantern,Finish,90.32,402,2026-01-27,Portland,true,
+SKU-10105,Brass hinge 2,Hardware,58.18,397,2026-06-12,Leeds,true,
+SKU-10112,Oak dowel 2,Timber,178.20,166,2026-07-14,Kyoto,false,
+SKU-10119,Linen thread 2,Textiles,48.63,137,2026-01-18,Tallinn,true,
+SKU-10126,Cast iron pan 2,Kitchen,33.93,360,2026-09-05,Lisbon,true,Backordered
+SKU-10133,Beeswax block 2,Finish,111.98,300,2026-03-20,Adelaide,true,
+SKU-10140,Copper rivet 2,Hardware,157.65,141,2026-08-23,Bergen,false,
+SKU-10147,Walnut plank 2,Timber,169.98,369,2026-09-09,Portland,true,
+SKU-10154,Steel ruler 2,Textiles,177.20,428,2026-03-24,Leeds,true,
+SKU-10161,Hemp rope 2,Kitchen,59.31,347,2026-03-13,Kyoto,true,
+SKU-10168,Cedar shingle 2,Finish,131.93,456,2026-05-22,Tallinn,false,
+SKU-10175,Glass jar 2,Hardware,70.13,318,2026-06-19,Lisbon,true,
+SKU-10182,Ceramic tile 2,Timber,83.68,241,2026-03-06,Adelaide,true,
+SKU-10189,Wool felt 2,Textiles,181.66,329,2026-02-05,Bergen,true,Backordered
+SKU-10196,Leather strap 2,Kitchen,146.22,413,2026-02-10,Portland,false,
+SKU-10203,Tin lantern 2,Finish,86.61,400,2026-06-10,Leeds,true,
+SKU-10210,Brass hinge 3,Hardware,113.89,392,2026-02-28,Kyoto,true,
+SKU-10217,Oak dowel 3,Timber,17.13,336,2026-04-25,Tallinn,true,
+SKU-10224,Linen thread 3,Textiles,42.55,399,2026-06-18,Lisbon,false,
+SKU-10231,Cast iron pan 3,Kitchen,55.21,279,2026-04-09,Adelaide,true,
+SKU-10238,Beeswax block 3,Finish,164.12,475,2026-08-23,Bergen,true,
+SKU-10245,Copper rivet 3,Hardware,9.76,422,2026-05-04,Portland,true,
+SKU-10252,Walnut plank 3,Timber,45.53,64,2026-04-08,Leeds,false,Backordered
+SKU-10259,Steel ruler 3,Textiles,66.06,455,2026-08-01,Kyoto,true,
+SKU-10266,Hemp rope 3,Kitchen,183.88,377,2026-03-24,Tallinn,true,
+SKU-10273,Cedar shingle 3,Finish,147.78,319,2026-03-05,Lisbon,true,
+SKU-10280,Glass jar 3,Hardware,50.88,282,2026-03-07,Adelaide,false,
+SKU-10287,Ceramic tile 3,Timber,61.31,407,2026-07-20,Bergen,true,
+SKU-10294,Wool felt 3,Textiles,35.79,363,2026-07-09,Portland,true,
+SKU-10301,Leather strap 3,Kitchen,97.94,261,2026-04-20,Leeds,true,
+SKU-10308,Tin lantern 3,Finish,134.17,113,2026-07-02,Kyoto,false,
+SKU-10315,Brass hinge 4,Hardware,107.90,384,2026-02-13,Tallinn,true,Backordered
+SKU-10322,Oak dowel 4,Timber,75.71,475,2026-05-28,Lisbon,true,
+SKU-10329,Linen thread 4,Textiles,184.44,4,2026-04-20,Adelaide,true,

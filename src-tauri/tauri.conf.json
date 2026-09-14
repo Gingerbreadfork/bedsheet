@@ -1,0 +1,69 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "bedsheet",
+  "version": "0.1.0",
+  "identifier": "app.bedsheet",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "bedsheet",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 640,
+        "minHeight": 420,
+        "center": true,
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage"
+    ],
+    "category": "Utility",
+    "shortDescription": "A focused CSV editor",
+    "longDescription": "bedsheet is a fast, focused editor and reader for CSV and other delimited text files.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "csv",
+          "tsv"
+        ],
+        "mimeType": "text/csv",
+        "name": "CSV",
+        "description": "Comma-separated values"
+      }
+    ],
+    "linux": {
+      "deb": {
+        "desktopTemplate": "bedsheet.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "bedsheet.desktop"
+      }
+    }
+  }
+}

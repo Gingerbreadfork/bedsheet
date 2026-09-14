@@ -1,0 +1,184 @@
+import type { Doc } from './document.svelte';
+
+export interface Pos {
+  r: number;
+  c: number;
+}
+
+export interface Range {
+  r0: number;
+  c0: number;
+  r1: number;
+  c1: number;
+}
+
+export interface EditState {
+  r: number;
+  c: number;
+  initial: string;
+  mode: 'replace' | 'edit';
+}
+
+export const COL_STRIDE = 1 << 20;
+export const cellKey = (r: number, c: number): number => r * COL_STRIDE + c;
+
+export const MIN_COL_WIDTH = 48;
+export const MAX_COL_WIDTH = 560;
+export const DEFAULT_COL_WIDTH = 140;
+
+/** View-level state for the grid: selection, editing, layout, and search overlays. */
+export class GridState {
+  anchor = $state.raw<Pos>({ r: 0, c: 0 });
+  focus = $state.raw<Pos>({ r: 0, c: 0 });
+  editing = $state.raw<EditState | null>(null);
+  editingHeader = $state<number | null>(null);
+  widths = $state<number[]>([]);
+  zoom = $state(1);
+  mono = $state(false);
+  viewRows = $state.raw<number[] | null>(null);
+  matches = $state.raw<Pos[]>([]);
+  matchSet = $state.raw<Set<number>>(new Set());
+  matchIndex = $state(-1);
+
+  scrollIntoView: ((pos: Pos) => void) | null = null;
+  focusGrid: (() => void) | null = null;
+
+  constructor(readonly doc: Doc) {}
+
+  get rowCount(): number {
+    void this.doc.rev;
+    return this.viewRows ? this.viewRows.length : this.doc.rows.length;
+  }
+
+  get colCount(): number {
+    void this.doc.rev;
+    return this.doc.colCount;
+  }
+
+  dataRow(viewRow: number): number {
+    return this.viewRows ? (this.viewRows[viewRow] ?? viewRow) : viewRow;
+  }
+
+  viewRow(dataRow: number): number {
+    const v = this.viewRows;
+    if (!v) return dataRow;
+    let lo = 0;
+    let hi = v.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (v[mid] === dataRow) return mid;
+      if (v[mid] < dataRow) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    return -1;
+  }
+
+  get active(): Pos {
+    return this.anchor;
+  }
+
+  get range(): Range {
+    const a = this.anchor;
+    const f = this.focus;
+    return {
+      r0: Math.min(a.r, f.r),
+      c0: Math.min(a.c, f.c),
+      r1: Math.max(a.r, f.r),
+      c1: Math.max(a.c, f.c),
+    };
+  }
+
+  get isSingle(): boolean {
+    return this.anchor.r === this.focus.r && this.anchor.c === this.focus.c;
+  }
+
+  get selectedRowIndices(): number[] {
+    const { r0, r1 } = this.range;
+    const out: number[] = [];
+    for (let r = r0; r <= r1; r++) out.push(this.dataRow(r));
+    return out;
+  }
+
+  get selectedColIndices(): number[] {
+    const { c0, c1 } = this.range;
+    const out: number[] = [];
+    for (let c = c0; c <= c1; c++) out.push(c);
+    return out;
+  }
+
+  clamp(p: Pos): Pos {
+    const rows = Math.max(0, this.rowCount - 1);
+    const cols = Math.max(0, this.colCount - 1);
+    return { r: Math.min(Math.max(0, p.r), rows), c: Math.min(Math.max(0, p.c), cols) };
+  }
+
+  select(r: number, c: number, scroll = true): void {
+    const p = this.clamp({ r, c });
+    this.anchor = p;
+    this.focus = p;
+    if (scroll) this.scrollIntoView?.(p);
+  }
+
+  extendTo(r: number, c: number, scroll = true): void {
+    const p = this.clamp({ r, c });
+    this.focus = p;
+    if (scroll) this.scrollIntoView?.(p);
+  }
+
+  /** Moves the cursor (or the focus corner when extending). `jump` goes to the sheet edge. */
+  move(dr: number, dc: number, extend: boolean, jump = false): void {
+    const base = extend ? this.focus : this.anchor;
+    let r = base.r;
+    let c = base.c;
+    if (jump) {
+      if (dr < 0) r = 0;
+      if (dr > 0) r = this.rowCount - 1;
+      if (dc < 0) c = 0;
+      if (dc > 0) c = this.colCount - 1;
+    } else {
+      r += dr;
+      c += dc;
+    }
+    if (extend) this.extendTo(r, c);
+    else this.select(r, c);
+  }
+
+  selectAll(): void {
+    this.anchor = { r: 0, c: 0 };
+    this.focus = this.clamp({ r: this.rowCount - 1, c: this.colCount - 1 });
+  }
+
+  selectRows(from: number, to: number): void {
+    this.anchor = this.clamp({ r: from, c: 0 });
+    this.focus = this.clamp({ r: to, c: this.colCount - 1 });
+  }
+
+  selectCols(from: number, to: number): void {
+    this.anchor = this.clamp({ r: 0, c: from });
+    this.focus = this.clamp({ r: this.rowCount - 1, c: to });
+  }
+
+  contains(r: number, c: number): boolean {
+    const g = this.range;
+    return r >= g.r0 && r <= g.r1 && c >= g.c0 && c <= g.c1;
+  }
+
+  startEdit(mode: 'replace' | 'edit', initial?: string): void {
+    if (this.rowCount === 0 || this.colCount === 0) return;
+    const { r, c } = this.anchor;
+    this.editing = {
+      r,
+      c,
+      mode,
+      initial: initial ?? (mode === 'edit' ? this.doc.cell(this.dataRow(r), c) : ''),
+    };
+  }
+
+  ensureValid(): void {
+    const a = this.clamp(this.anchor);
+    const f = this.clamp(this.focus);
+    if (a.r !== this.anchor.r || a.c !== this.anchor.c) this.anchor = a;
+    if (f.r !== this.focus.r || f.c !== this.focus.c) this.focus = f;
+    if (this.editing && (this.editing.r >= this.rowCount || this.editing.c >= this.colCount)) this.editing = null;
+  }
+}
