@@ -374,6 +374,7 @@
       grid.widths[c] = fitColumn(c);
       return;
     }
+    if (target.closest('.editor, .hinput')) return;
     const hit = hitTest(e);
     if (hit.kind === 'cell') {
       grid.select(hit.r, hit.c, false);
@@ -384,6 +385,7 @@
   }
 
   function onContextMenu(e: MouseEvent): void {
+    if ((e.target as HTMLElement).closest('.editor, .hinput')) return;
     e.preventDefault();
     const hit = hitTest(e);
     app.commitEdit?.();
