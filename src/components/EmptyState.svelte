@@ -65,15 +65,8 @@
     position: relative;
     height: 100%;
     overflow: auto;
-    background-color: var(--sheet);
-    background-image:
-      linear-gradient(to right, transparent calc(var(--margin-x) - 5px), var(--margin-rule) calc(var(--margin-x) - 5px), var(--margin-rule) calc(var(--margin-x) - 4px), transparent calc(var(--margin-x) - 4px), transparent calc(var(--margin-x) - 1px), var(--margin-rule) calc(var(--margin-x) - 1px), var(--margin-rule) var(--margin-x), transparent var(--margin-x)),
-      repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--line) 27px, var(--line) 28px);
-    --margin-x: clamp(56px, 12vw, 132px);
-    transition: background-color var(--t-med) var(--ease-out);
-  }
-  .empty.hover {
-    background-color: color-mix(in oklch, var(--sheet) 88%, var(--accent));
+    background-color: var(--paper);
+    --margin-x: clamp(56px, 10vw, 112px);
   }
   .empty.hover::after {
     content: '';
@@ -84,8 +77,19 @@
     pointer-events: none;
   }
   .page {
+    max-width: 960px;
     min-height: 100%;
+    margin: 0 auto;
     padding: 84px 40px 56px calc(var(--margin-x) + 22px);
+    background-color: var(--sheet);
+    background-image:
+      linear-gradient(to right, transparent calc(var(--margin-x) - 5px), var(--margin-rule) calc(var(--margin-x) - 5px), var(--margin-rule) calc(var(--margin-x) - 4px), transparent calc(var(--margin-x) - 4px), transparent calc(var(--margin-x) - 1px), var(--margin-rule) calc(var(--margin-x) - 1px), var(--margin-rule) var(--margin-x), transparent var(--margin-x)),
+      repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--line) 27px, var(--line) 28px);
+    box-shadow: 0 0 0 1px var(--line), 0 0 48px -12px oklch(20% 0.02 150 / 0.18);
+    transition: background-color var(--t-med) var(--ease-out);
+  }
+  .empty.hover .page {
+    background-color: color-mix(in oklch, var(--sheet) 88%, var(--accent));
   }
   .ledger {
     max-width: 600px;
@@ -97,12 +101,14 @@
     letter-spacing: -0.015em;
     line-height: 56px;
     color: var(--ink);
+    transform: translateY(15px);
   }
   .lede {
     margin: 0 0 28px;
     line-height: 28px;
     color: var(--ink-2);
     font-size: 14px;
+    transform: translateY(6px);
   }
   .actions {
     display: flex;
