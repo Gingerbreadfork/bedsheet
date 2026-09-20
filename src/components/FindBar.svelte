@@ -9,6 +9,7 @@
   let n = $derived(grid.matches.length);
   let countText = $derived.by(() => {
     if (!app.query) return '';
+    if (app.queryError) return 'Invalid pattern';
     if (n === 0) return 'No matches';
     if (grid.matchIndex >= 0) return `${grid.matchIndex + 1} of ${n.toLocaleString()}`;
     return `${n.toLocaleString()} ${n === 1 ? 'match' : 'matches'}`;
@@ -71,8 +72,14 @@
       onkeydown={onFindKey}
     />
     <span class="count" class:none={app.query && n === 0}>{countText}</span>
-    <button class="tog" class:on={app.matchCase} title="Match case" onclick={() => app.toggleMatchCase()}>
+    <button class="tog" class:on={app.matchCase} title="Match case (Alt+C)" onclick={() => app.toggleMatchCase()}>
       <Icon name="caseSensitive" size={15} />
+    </button>
+    <button class="tog" class:on={app.wholeCell} title="Match whole cells only (Alt+W)" onclick={() => app.toggleWholeCell()}>
+      <Icon name="wholeCell" size={15} />
+    </button>
+    <button class="tog" class:on={app.useRegex} title="Regular expression (Alt+R)" onclick={() => app.toggleRegex()}>
+      <Icon name="regex" size={15} />
     </button>
   </div>
   <div class="nav">
@@ -83,6 +90,10 @@
       <Icon name="chevronDown" />
     </button>
   </div>
+  <button class="chip" class:on={app.scope !== null} title="Search only in the selection (Alt+L)" onclick={() => app.toggleScope()}>
+    <Icon name="scope" size={14} />
+    {app.scope ? `In ${app.scope.label}` : 'In selection'}
+  </button>
   <button class="chip" class:on={app.filterRows} disabled={!app.query} onclick={() => app.toggleFilterRows()}>
     <Icon name="filter" size={14} />
     Only matching rows

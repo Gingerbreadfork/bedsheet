@@ -3,6 +3,8 @@ import { inferColumnType, toNumber, toTimestamp, detectDateOrder, looksLikeHeade
 
 export interface Command {
   label: string;
+  /** Whether it only changes cell contents or also moves rows and columns around. */
+  kind?: 'cell' | 'structure';
   redo(): void;
   undo(): void;
 }
@@ -171,7 +173,7 @@ export class Doc {
     if (!cmd) return null;
     cmd.undo();
     this.redoStack.push(cmd);
-    this.touch('structure');
+    this.touch(cmd.kind ?? 'structure');
     return cmd.label;
   }
 
@@ -180,7 +182,7 @@ export class Doc {
     if (!cmd) return null;
     cmd.redo();
     this.undoStack.push(cmd);
-    this.touch('structure');
+    this.touch(cmd.kind ?? 'structure');
     return cmd.label;
   }
 
@@ -495,6 +497,7 @@ export class Doc {
   }
 
   private exec(cmd: Command, kind: 'cell' | 'structure'): void {
+    cmd.kind = kind;
     cmd.redo();
     this.undoStack.push(cmd);
     if (this.undoStack.length > MAX_UNDO) {

@@ -81,6 +81,15 @@ export interface PromptState {
   submit: (value: string) => boolean;
 }
 
+export interface SearchScope {
+  c0: number;
+  c1: number;
+  r0: number;
+  r1: number;
+  rows: Set<number> | null;
+  label: string;
+}
+
 export interface Toast {
   id: number;
   text: string;
@@ -117,6 +126,11 @@ export class AppState {
   query = $state('');
   replaceWith = $state('');
   matchCase = $state(false);
+  useRegex = $state(false);
+  wholeCell = $state(false);
+  /** Limits the search to these columns and document rows. `rows` lists them when they aren't a plain range. */
+  scope = $state.raw<SearchScope | null>(null);
+  queryError = $state(false);
   filterRows = $state(false);
   searchOpen = $state(false);
   replaceOpen = $state(false);
@@ -160,6 +174,7 @@ export class AppState {
     });
     this.doc.onChange((kind) => {
       this.grid.ensureValid();
+      if (kind !== 'cell') this.scope = null;
       if (kind === 'load') {
         this.grid.matchIndex = -1;
         this.runSearch(false);
@@ -725,20 +740,23 @@ export class AppState {
       g.ensureValid();
       return;
     }
-    const needle = this.matchCase ? q : q.toLowerCase();
+    const test = this.matcher();
+    this.queryError = test === null;
     const rows = this.doc.rows;
-    const cols = this.doc.colCount;
+    const scope = this.scope;
+    const c0 = scope ? scope.c0 : 0;
+    const c1 = scope ? Math.min(scope.c1, this.doc.colCount - 1) : this.doc.colCount - 1;
+    const r0 = scope ? scope.r0 : 0;
+    const r1 = scope ? Math.min(scope.r1, rows.length - 1) : rows.length - 1;
     const matches: Pos[] = [];
     const set = new Set<number>();
     const rowList: number[] = [];
-    for (let r = 0; r < rows.length; r++) {
+    for (let r = r0; test && r <= r1; r++) {
+      if (scope?.rows && !scope.rows.has(r)) continue;
       const row = rows[r];
       let hit = false;
-      for (let c = 0; c < cols; c++) {
-        const v = row[c];
-        if (!v) continue;
-        const s = this.matchCase ? v : v.toLowerCase();
-        if (s.includes(needle)) {
+      for (let c = c0; c <= c1; c++) {
+        if (test(row[c] ?? '')) {
           matches.push({ r, c });
           set.add(cellKey(r, c));
           hit = true;
@@ -757,6 +775,22 @@ export class AppState {
     g.ensureValid();
   }
 
+  /** Builds the cell test for the current query and options, or null when the pattern is invalid. */
+  private matcher(): ((value: string) => boolean) | null {
+    const q = this.query;
+    if (this.useRegex) {
+      try {
+        const re = new RegExp(this.wholeCell ? `^(?:${q})$` : q, this.matchCase ? 'u' : 'iu');
+        return (v) => re.test(v);
+      } catch {
+        return null;
+      }
+    }
+    const needle = this.matchCase ? q : q.toLowerCase();
+    if (this.wholeCell) return this.matchCase ? (v) => v === needle : (v) => v.toLowerCase() === needle;
+    return this.matchCase ? (v) => v.includes(needle) : (v) => v !== '' && v.toLowerCase().includes(needle);
+  }
+
   setQuery(q: string): void {
     this.query = q;
     this.grid.matchIndex = -1;
@@ -771,6 +805,36 @@ export class AppState {
 
   toggleMatchCase(): void {
     this.matchCase = !this.matchCase;
+    this.runSearch(false);
+  }
+
+  toggleRegex(): void {
+    this.useRegex = !this.useRegex;
+    this.runSearch(false);
+  }
+
+  toggleWholeCell(): void {
+    this.wholeCell = !this.wholeCell;
+    this.runSearch(false);
+  }
+
+  /** Limits the search to the selection, or to the whole column when only one cell is selected. */
+  toggleScope(): void {
+    const g = this.grid;
+    if (this.scope || !this.hasCells) {
+      this.scope = null;
+    } else {
+      const { r0, c0, r1, c1 } = g.range;
+      const wholeColumns = g.isSingle || (r0 === 0 && r1 === g.rowCount - 1);
+      const names = c0 === c1 ? this.doc.columnLabel(c0) : `${c1 - c0 + 1} columns`;
+      if (wholeColumns) {
+        this.scope = { c0, c1, r0: 0, r1: Infinity, rows: null, label: names };
+      } else {
+        const rows = g.viewRows ? new Set(g.selectedRowIndices) : null;
+        this.scope = { c0, c1, r0: g.viewRows ? 0 : r0, r1: g.viewRows ? Infinity : r1, rows, label: 'selection' };
+      }
+    }
+    this.grid.matchIndex = -1;
     this.runSearch(false);
   }
 
@@ -800,6 +864,7 @@ export class AppState {
   /** Drops the query and filter; the search itself reruns when the next document loads. */
   private resetFind(): void {
     this.query = '';
+    this.scope = null;
     this.filterRows = false;
     this.grid.matchIndex = -1;
   }
@@ -867,6 +932,11 @@ export class AppState {
   }
 
   private replaceIn(value: string): string {
+    if (this.useRegex) {
+      const pattern = this.wholeCell ? `^(?:${this.query})$` : this.query;
+      return value.replace(new RegExp(pattern, this.matchCase ? 'gu' : 'giu'), this.replaceWith);
+    }
+    if (this.wholeCell) return this.replaceWith;
     if (this.matchCase) return value.replaceAll(this.query, () => this.replaceWith);
     const re = new RegExp(this.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
     return value.replace(re, () => this.replaceWith);
@@ -973,6 +1043,10 @@ export class AppState {
       { id: 'find.replace', title: 'Find and replace', group: 'Find', shortcut: 'Ctrl+H', global: true, when: loaded, run: () => this.openFind(true) },
       { id: 'find.next', title: 'Next match', group: 'Find', shortcut: 'F3', global: true, when: () => this.grid.matches.length > 0, run: () => this.stepMatch(1) },
       { id: 'find.prev', title: 'Previous match', group: 'Find', shortcut: 'Shift+F3', global: true, when: () => this.grid.matches.length > 0, run: () => this.stepMatch(-1) },
+      { id: 'find.case', title: () => (this.matchCase ? 'Find: ignore case' : 'Find: match case'), group: 'Find', shortcut: 'Alt+C', global: true, when: () => this.searchOpen, run: () => this.toggleMatchCase() },
+      { id: 'find.wholeCell', title: () => (this.wholeCell ? 'Find: match anywhere in a cell' : 'Find: match whole cells only'), group: 'Find', shortcut: 'Alt+W', global: true, when: () => this.searchOpen, run: () => this.toggleWholeCell() },
+      { id: 'find.regex', title: () => (this.useRegex ? 'Find: plain text' : 'Find: use a regular expression'), group: 'Find', shortcut: 'Alt+R', global: true, when: () => this.searchOpen, run: () => this.toggleRegex() },
+      { id: 'find.scope', title: () => (this.scope ? 'Find: search the whole sheet' : 'Find: search only in the selection'), group: 'Find', shortcut: 'Alt+L', global: true, when: () => this.searchOpen || this.scope !== null, run: () => this.toggleScope() },
       { id: 'find.filter', title: () => (this.filterRows ? 'Show all rows' : 'Show only matching rows'), group: 'Find', when: () => this.doc.loaded && this.query.length > 0, run: () => this.toggleFilterRows() },
 
       ...DELIMITERS.map((d) => ({

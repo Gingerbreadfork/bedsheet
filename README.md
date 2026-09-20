@@ -49,7 +49,9 @@ columns. Sort with type-aware comparison. Resize columns by dragging, or double-
 edge to fit.
 
 **Finds and replaces.** Matches are highlighted in the grid as you type. Step through them,
-match case, replace one or all, or show only the rows that match and work on those.
+match case or whole cells, use a regular expression (with `$1` groups in the replacement),
+search just the selected column or block, replace one or all, or show only the rows that
+match and work on those.
 
 **Knows what it's looking at.** Numeric columns are detected and right-aligned with tabular
 figures. Select a block of numbers and the status bar shows sum, average, and count.
@@ -139,6 +141,8 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 | Find and replace | Ctrl+H |
 | Next, previous match | Enter, Shift+Enter in the find box, or F3, Shift+F3 |
 | Replace all | Ctrl+Enter in the replace box |
+| Match case, whole cells, regular expression | Alt+C, Alt+W, Alt+R |
+| Search only in the selection | Alt+L |
 
 | Files and view | |
 | --- | --- |

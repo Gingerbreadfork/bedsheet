@@ -190,3 +190,79 @@ describe('custom delimiter', () => {
     expect(app.doc.delimiter).toBe('\t');
   });
 });
+
+describe('find options', () => {
+  beforeEach(() => {
+    app.useRegex = false;
+    app.wholeCell = false;
+  });
+
+  it('matches whole cells only', () => {
+    load('h\nann\nanna\nAnn\n');
+    app.wholeCell = true;
+    find('ann');
+    expect(app.grid.matches.map((m) => m.r)).toEqual([0, 2]);
+    app.matchCase = true;
+    find('ann');
+    expect(app.grid.matches.map((m) => m.r)).toEqual([0]);
+  });
+
+  it('searches with a regular expression and replaces with groups', () => {
+    load('name\n"Smith, Ann"\n"Jones, Bob"\nplain\n');
+    app.useRegex = true;
+    find('^(\\w+), (\\w+)$');
+    expect(app.grid.matches.length).toBe(2);
+    app.replaceWith = '$2 $1';
+    app.replaceAll();
+    expect(column()).toEqual(['Ann Smith', 'Bob Jones', 'plain']);
+  });
+
+  it('finds blank cells with a whole-cell pattern', () => {
+    load('a,b\n1,\n,2\n3,4\n');
+    app.useRegex = true;
+    app.wholeCell = true;
+    find('');
+    expect(app.grid.matches).toEqual([]);
+    find('\\s*');
+    expect(app.grid.matches).toEqual([{ r: 0, c: 1 }, { r: 1, c: 0 }]);
+  });
+
+  it('reports a broken pattern instead of throwing', () => {
+    load('h\nx\n');
+    app.useRegex = true;
+    find('(');
+    expect(app.queryError).toBe(true);
+    expect(app.grid.matches).toEqual([]);
+    app.useRegex = false;
+    find('(');
+    expect(app.queryError).toBe(false);
+  });
+
+  it('limits the search to the selected column and keeps that scope through edits', () => {
+    load('a,b\nx,x\ny,x\nx,y\n');
+    app.grid.select(0, 1, false);
+    app.toggleScope();
+    find('x');
+    expect(app.grid.matches).toEqual([{ r: 0, c: 1 }, { r: 1, c: 1 }]);
+    app.replaceWith = 'z';
+    app.replaceAll();
+    expect(app.doc.rows).toEqual([['x', 'z'], ['y', 'z'], ['x', 'y']]);
+    app.undo();
+    expect(app.scope).not.toBeNull();
+    app.toggleScope();
+    find('x');
+    expect(app.grid.matches.length).toBe(4);
+  });
+
+  it('limits the search to a block and drops the scope when rows move', () => {
+    load('a,b\nx,x\nx,x\nx,x\n');
+    app.grid.select(0, 0, false);
+    app.grid.extendTo(1, 0, false);
+    app.toggleScope();
+    find('x');
+    expect(app.grid.matches).toEqual([{ r: 0, c: 0 }, { r: 1, c: 0 }]);
+    app.grid.select(0, 0, false);
+    app.insertRows('above');
+    expect(app.scope).toBeNull();
+  });
+});
