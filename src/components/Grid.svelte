@@ -188,6 +188,15 @@
   grid.scrollIntoView = scrollIntoView;
   grid.focusGrid = () => viewport?.focus({ preventScroll: true });
 
+  $effect(() =>
+    doc.onChange((kind) => {
+      if (kind !== 'load' || !viewport) return;
+      viewport.scrollTo(0, 0);
+      scrollTop = 0;
+      scrollLeft = 0;
+    }),
+  );
+
   function onScroll(): void {
     if (!viewport) return;
     scrollTop = viewport.scrollTop;
