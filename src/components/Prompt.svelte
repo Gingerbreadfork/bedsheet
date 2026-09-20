@@ -2,15 +2,17 @@
   import { app } from '../lib/app.svelte';
 
   let input = $state<HTMLInputElement>();
-  let value = $state('');
-  let max = $derived(app.doc.rowCount);
+  let prompt = $derived(app.prompt);
+  // svelte-ignore state_referenced_locally
+  let value = $state(prompt?.initial ?? '');
 
   $effect(() => {
     input?.focus();
+    input?.select();
   });
 
   function close(): void {
-    app.gotoOpen = false;
+    app.prompt = null;
     app.grid.focusGrid?.();
   }
 
@@ -18,13 +20,8 @@
     e.stopPropagation();
     if (e.key === 'Enter') {
       e.preventDefault();
-      const n = parseInt(value, 10);
-      if (Number.isFinite(n) && n >= 1 && n <= max) {
-        app.gotoRow(n);
-        close();
-      } else {
-        input?.select();
-      }
+      if (prompt?.submit(value)) close();
+      else input?.select();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       close();
@@ -32,13 +29,24 @@
   }
 </script>
 
-<div class="scrim" role="presentation" onpointerdown={close}>
-  <div class="panel" role="dialog" tabindex="-1" aria-label="Go to row" onpointerdown={(e) => e.stopPropagation()}>
-    <label for="goto">Go to row</label>
-    <input id="goto" bind:this={input} bind:value inputmode="numeric" placeholder="1 – {max.toLocaleString()}" onkeydown={onKey} />
-    <kbd>↵</kbd>
+{#if prompt}
+  <div class="scrim" role="presentation" onpointerdown={close}>
+    <div class="panel" role="dialog" tabindex="-1" aria-label={prompt.label} onpointerdown={(e) => e.stopPropagation()}>
+      <label for="prompt">{prompt.label}</label>
+      <input
+        id="prompt"
+        bind:this={input}
+        bind:value
+        inputmode={prompt.numeric ? 'numeric' : 'text'}
+        placeholder={prompt.placeholder}
+        spellcheck="false"
+        autocomplete="off"
+        onkeydown={onKey}
+      />
+      <kbd>↵</kbd>
+    </div>
   </div>
-</div>
+{/if}
 
 <style>
   .scrim {

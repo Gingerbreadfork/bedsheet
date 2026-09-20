@@ -21,7 +21,7 @@ export const DELIMITERS: DelimiterOption[] = [
 ];
 
 export function delimiterLabel(char: string): string {
-  return DELIMITERS.find((d) => d.char === char)?.label ?? JSON.stringify(char);
+  return DELIMITERS.find((d) => d.char === char)?.label ?? `“${char}”`;
 }
 
 export interface ParseResult {

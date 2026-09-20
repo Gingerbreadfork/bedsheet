@@ -169,3 +169,24 @@ describe('encoding', () => {
     expect(app.doc.encoding).toBe('Windows-1252');
   });
 });
+
+describe('custom delimiter', () => {
+  it('re-reads the file with any single character', () => {
+    load('a:b\n1:2\n');
+    expect(app.doc.colCount).toBe(1);
+    app.promptDelimiter();
+    expect(app.prompt!.submit('::')).toBe(false);
+    expect(app.prompt!.submit('"')).toBe(false);
+    expect(app.prompt!.submit(':')).toBe(true);
+    expect(app.doc.columns).toEqual(['a', 'b']);
+    expect(app.doc.toText()).toBe('a:b\n1:2\n');
+  });
+
+  it('accepts \\t for a tab', () => {
+    load('a\tb\n1\t2\n');
+    app.setDelimiter(',');
+    app.promptDelimiter();
+    expect(app.prompt!.submit('\\t')).toBe(true);
+    expect(app.doc.delimiter).toBe('\t');
+  });
+});

@@ -29,7 +29,8 @@ keep open.
 
 ## What it does
 
-**Reads anything delimited.** CSV, TSV, semicolons, pipes. The delimiter, line endings, and
+**Reads anything delimited.** CSV, TSV, semicolons, pipes, or any single character you
+choose. The delimiter, line endings, and
 encoding are detected on open (UTF-8 with or without BOM, UTF-16 with or without one, and a
 Windows-1252 fallback). Files with short rows are padded and you're told about it.
 

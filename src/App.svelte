@@ -11,7 +11,7 @@
   import CommandPalette from './components/CommandPalette.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
   import Dialog from './components/Dialog.svelte';
-  import GotoRow from './components/GotoRow.svelte';
+  import Prompt from './components/Prompt.svelte';
   import Shortcuts from './components/Shortcuts.svelte';
   import Toasts from './components/Toasts.svelte';
 
@@ -135,8 +135,8 @@
   {#if app.paletteOpen}
     <CommandPalette />
   {/if}
-  {#if app.gotoOpen}
-    <GotoRow />
+  {#if app.prompt}
+    <Prompt />
   {/if}
   {#if app.shortcutsOpen}
     <Shortcuts />

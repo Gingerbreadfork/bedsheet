@@ -58,6 +58,11 @@
       checked: doc.delimiter === d.char,
       run: () => app.setDelimiter(d.char),
     }));
+    items.push('sep', {
+      label: 'Custom…',
+      checked: !DELIMITERS.some((d) => d.char === doc.delimiter),
+      run: () => app.promptDelimiter(),
+    });
     app.openMenu({ x: r.left, y: r.top - 4, align: 'left', items, width: 160 });
   }
 

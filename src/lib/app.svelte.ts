@@ -72,6 +72,15 @@ export interface DialogState {
   actions: DialogAction[];
 }
 
+/** A one-line input box. `submit` returns false to reject the value and keep the box open. */
+export interface PromptState {
+  label: string;
+  placeholder?: string;
+  initial?: string;
+  numeric?: boolean;
+  submit: (value: string) => boolean;
+}
+
 export interface Toast {
   id: number;
   text: string;
@@ -96,7 +105,7 @@ export class AppState {
   theme = $state<Theme>(loadSetting<Theme>('theme', 'system'));
   paletteOpen = $state(false);
   shortcutsOpen = $state(false);
-  gotoOpen = $state(false);
+  prompt = $state.raw<PromptState | null>(null);
   menu = $state.raw<MenuState | null>(null);
   dialog = $state.raw<DialogState | null>(null);
   toasts = $state<Toast[]>([]);
@@ -209,8 +218,8 @@ export class AppState {
       this.shortcutsOpen = false;
       closed = true;
     }
-    if (this.gotoOpen) {
-      this.gotoOpen = false;
+    if (this.prompt) {
+      this.prompt = null;
       closed = true;
     }
     return closed;
@@ -669,6 +678,21 @@ export class AppState {
     }
   }
 
+  promptDelimiter(): void {
+    const current = this.doc.delimiter;
+    this.prompt = {
+      label: 'Delimiter',
+      placeholder: 'One character, or \\t',
+      initial: DELIMITERS.some((d) => d.char === current) ? '' : current,
+      submit: (value) => {
+        const d = value === '\\t' ? '\t' : value;
+        if (d.length !== 1 || d === '"' || d === '\n' || d === '\r') return false;
+        this.setDelimiter(d);
+        return true;
+      },
+    };
+  }
+
   private withPreservedView(fn: () => void): void {
     this.preserveView = true;
     try {
@@ -845,6 +869,21 @@ export class AppState {
     return value.replace(re, () => this.replaceWith);
   }
 
+  promptGotoRow(): void {
+    const max = this.doc.rowCount;
+    this.prompt = {
+      label: 'Go to row',
+      placeholder: `1 – ${max.toLocaleString()}`,
+      numeric: true,
+      submit: (value) => {
+        const n = parseInt(value, 10);
+        if (!Number.isFinite(n) || n < 1 || n > max) return false;
+        this.gotoRow(n);
+        return true;
+      },
+    };
+  }
+
   gotoRow(n: number): void {
     const g = this.grid;
     const vr = g.viewRows ? g.viewRow(n - 1) : n - 1;
@@ -916,7 +955,7 @@ export class AppState {
       { id: 'rows.insertBelow', title: 'Insert row below', group: 'Rows', shortcut: 'Ctrl+Enter', when: loaded, run: () => this.insertRows('below') },
       { id: 'rows.insertAbove', title: 'Insert row above', group: 'Rows', shortcut: 'Ctrl+Shift+Enter', when: loaded, run: () => this.insertRows('above') },
       { id: 'rows.delete', title: () => (this.grid.range.r1 > this.grid.range.r0 ? 'Delete selected rows' : 'Delete row'), group: 'Rows', shortcut: 'Ctrl+Shift+K', when: hasRows, run: () => this.deleteRows() },
-      { id: 'rows.goto', title: 'Go to row…', group: 'Rows', shortcut: 'Ctrl+G', global: true, when: hasRows, run: () => (this.gotoOpen = true) },
+      { id: 'rows.goto', title: 'Go to row…', group: 'Rows', shortcut: 'Ctrl+G', global: true, when: hasRows, run: () => this.promptGotoRow() },
 
       { id: 'cols.insertRight', title: 'Insert column to the right', group: 'Columns', when: loaded, run: () => this.insertColumn('right') },
       { id: 'cols.insertLeft', title: 'Insert column to the left', group: 'Columns', when: loaded, run: () => this.insertColumn('left') },
@@ -940,6 +979,7 @@ export class AppState {
         when: () => this.doc.loaded && this.doc.delimiter !== d.char,
         run: () => this.setDelimiter(d.char),
       })),
+      { id: 'view.delim.custom', title: 'Delimiter: custom…', group: 'View', when: loaded, run: () => this.promptDelimiter() },
       ...ENCODINGS.map((enc) => ({
         id: `view.encoding.${enc.id}`,
         title: `Encoding: ${enc.id}`,
