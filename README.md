@@ -226,7 +226,8 @@ green-charcoal rather than gray.
 - The interface is [Svelte 5](https://svelte.dev) and TypeScript.
 - The CSV parser is a hand-written RFC 4180 state machine with tests covering quoting,
   escaped quotes, embedded line breaks, mixed line endings, BOMs, ragged rows, and
-  unterminated quotes.
+  unterminated quotes. The document model, undo, search, encodings, and the save path are
+  tested too.
 - The grid is virtualized on both axes and positions cells absolutely, so a million rows
   cost the same to render as forty. Sheets taller than a browser can lay out (a little over a
   million rows) keep their own scroll offset, so the last row is as reachable as the first.
@@ -262,8 +263,9 @@ sudo pacman -S webkit2gtk-4.1 base-devel librsvg
 pnpm install
 pnpm tauri dev              # run with hot reload
 pnpm tauri build            # .deb, .rpm, and AppImage in src-tauri/target/release/bundle
-pnpm test                   # parser tests
+pnpm test                   # unit tests
 pnpm check                  # type check
+cargo test --manifest-path src-tauri/Cargo.toml   # file saving tests
 ```
 
 `pnpm dev` runs the interface alone in a browser, with file access falling back to the
