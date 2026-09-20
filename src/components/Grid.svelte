@@ -516,6 +516,9 @@
       'sep',
       { label: 'Insert row above', shortcut: 'Ctrl+Shift+Enter', run: () => app.insertRows('above') },
       { label: 'Insert row below', shortcut: 'Ctrl+Enter', run: () => app.insertRows('below') },
+      { label: `Duplicate ${rowWord()}`, shortcut: 'Ctrl+Shift+D', run: () => app.duplicateRows() },
+      { label: 'Move up', shortcut: 'Alt+ArrowUp', disabled: range.r0 === 0 || grid.viewRows !== null, run: () => app.moveRows(-1) },
+      { label: 'Move down', shortcut: 'Alt+ArrowDown', disabled: range.r1 >= rowCount - 1 || grid.viewRows !== null, run: () => app.moveRows(1) },
       'sep',
       { label: `Delete ${rowWord()}`, shortcut: 'Ctrl+Shift+K', danger: true, run: () => app.deleteRows() },
     ];
@@ -535,6 +538,8 @@
       'sep',
       { label: 'Insert column left', run: () => app.insertColumn('left') },
       { label: 'Insert column right', run: () => app.insertColumn('right') },
+      { label: 'Move left', shortcut: 'Alt+ArrowLeft', disabled: range.c0 === 0, run: () => app.moveColumns(-1) },
+      { label: 'Move right', shortcut: 'Alt+ArrowRight', disabled: range.c1 >= colCount - 1, run: () => app.moveColumns(1) },
       'sep',
       { label: `Delete ${colWord()}`, danger: true, run: () => app.deleteColumns() },
     ];
@@ -544,8 +549,9 @@
 
   /** Keys while the cursor sits on the column headers. Returns false for keys it leaves alone. */
   function onHeaderNavKey(e: KeyboardEvent): boolean {
+    if (e.altKey) return false;
     const c = grid.focus.c;
-    const plain = !e.ctrlKey && !e.altKey && !e.metaKey;
+    const plain = !e.ctrlKey && !e.metaKey;
     switch (e.key) {
       case 'ArrowDown':
       case 'Escape':
@@ -610,6 +616,7 @@
       return;
     }
     if (rowCount === 0) return;
+    if (e.altKey && e.key.startsWith('Arrow')) return;
     const pageRows = Math.max(1, Math.floor((viewH - headH) / rowH) - 1);
     let handled = true;
     switch (e.key) {

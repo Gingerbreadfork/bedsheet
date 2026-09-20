@@ -131,3 +131,39 @@ describe('loadText', () => {
     expect(d.toText()).toBe('1,ann\n2,bob\n3,cy\n');
   });
 });
+
+describe('moving rows and columns', () => {
+  it('moves a block of rows and undoes it', () => {
+    const d = load('n\na\nb\nc\nd\n');
+    expect(d.shiftRows(1, 2, -1)).toBe(true);
+    expect(column(d)).toEqual(['b', 'c', 'a', 'd']);
+    expect(d.shiftRows(0, 2, 1)).toBe(true);
+    expect(column(d)).toEqual(['a', 'b', 'c', 'd']);
+    d.undo();
+    d.undo();
+    expect(column(d)).toEqual(['a', 'b', 'c', 'd']);
+    d.redo();
+    expect(column(d)).toEqual(['b', 'c', 'a', 'd']);
+  });
+
+  it('refuses to move past either end', () => {
+    const d = load('n\na\nb\n');
+    expect(d.shiftRows(0, 1, -1)).toBe(false);
+    expect(d.shiftRows(1, 1, 1)).toBe(false);
+    expect(d.shiftColumns(0, 1, 1)).toBe(false);
+    expect(d.canUndo).toBe(false);
+  });
+
+  it('moves columns with their names and data', () => {
+    const d = load('a,b,c\n1,2,3\n');
+    const seen: unknown[] = [];
+    d.onColumnChange((change) => seen.push(change));
+    d.shiftColumns(0, 1, 1);
+    expect(d.columns).toEqual(['b', 'a', 'c']);
+    expect(d.rows).toEqual([['2', '1', '3']]);
+    expect(seen).toEqual([{ kind: 'move', from: 1, to: 0 }]);
+    d.undo();
+    expect(d.columns).toEqual(['a', 'b', 'c']);
+    expect(d.rows).toEqual([['1', '2', '3']]);
+  });
+});

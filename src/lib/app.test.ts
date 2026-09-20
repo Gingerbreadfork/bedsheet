@@ -266,3 +266,62 @@ describe('find options', () => {
     expect(app.scope).toBeNull();
   });
 });
+
+describe('editing commands', () => {
+  it('fills right from the first selected column', () => {
+    load('a,b,c\n1,,\n2,x,\n');
+    app.grid.selectAll();
+    app.fillRight();
+    expect(app.doc.rows).toEqual([['1', '1', '1'], ['2', '2', '2']]);
+  });
+
+  it('duplicates the selected rows below them as one undo step', () => {
+    load('n\na\nb\nc\n');
+    app.grid.select(0, 0, false);
+    app.grid.extendTo(1, 0, false);
+    app.duplicateRows();
+    expect(column()).toEqual(['a', 'b', 'a', 'b', 'c']);
+    app.doc.setCell(2, 0, 'changed');
+    expect(column()[0]).toBe('a');
+    app.undo();
+    app.undo();
+    expect(column()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('moves rows and keeps them selected', () => {
+    load('n\na\nb\nc\n');
+    app.grid.select(0, 0, false);
+    app.moveRows(1);
+    expect(column()).toEqual(['b', 'a', 'c']);
+    expect(app.grid.anchor.r).toBe(1);
+    app.moveRows(-1);
+    app.moveRows(-1);
+    expect(column()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('carries column widths along when columns move', () => {
+    load('a,b,c\n1,2,3\n');
+    app.grid.widths = [50, 100, 200];
+    app.grid.select(0, 0, false);
+    app.moveColumns(1);
+    expect(app.doc.columns).toEqual(['b', 'a', 'c']);
+    expect(app.grid.widths).toEqual([100, 50, 200]);
+    expect(app.grid.anchor.c).toBe(1);
+    app.undo();
+    expect(app.grid.widths).toEqual([50, 100, 200]);
+  });
+
+  it('tiles a pasted block across a selection it divides evenly', () => {
+    load('a,b\n,\n,\n,\n,\n');
+    app.grid.selectAll();
+    app.pasteText('x\ty\nz\tw');
+    expect(app.doc.rows).toEqual([['x', 'y'], ['z', 'w'], ['x', 'y'], ['z', 'w']]);
+  });
+
+  it('pastes once when the selection is not a multiple of the block', () => {
+    load('a,b\n,\n,\n,\n');
+    app.grid.selectAll();
+    app.pasteText('x\ty\nz\tw');
+    expect(app.doc.rows).toEqual([['x', 'y'], ['z', 'w'], ['', '']]);
+  });
+});

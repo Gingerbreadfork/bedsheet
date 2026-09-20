@@ -163,6 +163,12 @@ export class AppState {
     this.doc.onColumnChange((change) => {
       const widths = this.grid.widths;
       if (widths.length === 0) return;
+      if (change.kind === 'move') {
+        const moved = [...widths];
+        moved.splice(change.to, 0, moved.splice(change.from, 1)[0]);
+        this.grid.widths = moved;
+        return;
+      }
       if (change.kind === 'remove') {
         this.grid.widths = widths.filter((_, i) => !change.at.includes(i));
         return;
@@ -494,6 +500,18 @@ export class AppState {
     this.toastCells('Copied');
   }
 
+  async copyWithHeaders(): Promise<void> {
+    if (!this.hasCells) return;
+    this.commitPending();
+    const { c0, c1 } = this.grid.range;
+    const names = Array.from({ length: c1 - c0 + 1 }, (_, i) => this.doc.columnLabel(c0 + i));
+    const body = this.selectionText();
+    const text = serializeCsv([names], '\t', '\n') + (this.grid.isSingle ? serializeCsv([[body]], '\t', '\n') : body);
+    this.copied = null;
+    await clipboard.writeText(text);
+    this.toast('Copied with headers');
+  }
+
   async cut(): Promise<void> {
     if (!this.hasCells) return;
     this.commitPending();
@@ -526,6 +544,20 @@ export class AppState {
       const v = block[0][0];
       this.doc.setCells(this.selectionEdits(() => v), 'Paste');
       this.toast(`Pasted into ${(r1 - r0 + 1) * (c1 - c0 + 1)} cells`);
+      return;
+    }
+    const blockCols = block.reduce((m, r) => Math.max(m, r.length), 0);
+    const selRows = r1 - r0 + 1;
+    const selCols = c1 - c0 + 1;
+    const tiles = (selRows > block.length || selCols > blockCols) && selRows % block.length === 0 && selCols % blockCols === 0;
+    if (tiles) {
+      const edits: CellEdit[] = [];
+      for (let i = 0; i < selRows; i++) {
+        const r = g.dataRow(r0 + i);
+        for (let j = 0; j < selCols; j++) edits.push({ r, c: c0 + j, value: block[i % block.length][j % blockCols] ?? '' });
+      }
+      this.doc.setCells(edits, 'Paste');
+      this.toast(`Pasted into ${selRows} × ${selCols}`);
       return;
     }
     if (g.viewRows) {
@@ -562,6 +594,15 @@ export class AppState {
     );
   }
 
+  fillRight(): void {
+    const { c0, c1 } = this.grid.range;
+    if (!this.hasCells || c1 === c0) return;
+    this.doc.setCells(
+      this.selectionEdits((r) => this.doc.cell(r, c0)).filter((e) => e.c !== c0),
+      'Fill right',
+    );
+  }
+
   private toastCells(verb: string): void {
     const { r0, c0, r1, c1 } = this.grid.range;
     const n = (r1 - r0 + 1) * (c1 - c0 + 1);
@@ -570,17 +611,50 @@ export class AppState {
 
   // ---------- rows & columns ----------
 
-  insertRows(where: 'above' | 'below'): void {
+  duplicateRows(): void {
+    if (!this.hasCells) return;
+    this.insertRows('below', this.grid.selectedRowIndices.map((r) => this.doc.rows[r]));
+  }
+
+  /** Moves the selected rows one place up or down. Not offered while rows are hidden by a filter. */
+  moveRows(delta: 1 | -1): void {
+    const g = this.grid;
+    if (!this.hasCells) return;
+    if (g.viewRows) {
+      this.toast('Show all rows before moving them');
+      return;
+    }
+    this.commitPending();
+    const { r0, r1 } = g.range;
+    const { anchor, focus } = g;
+    if (!this.doc.shiftRows(r0, r1 - r0 + 1, delta)) return;
+    g.anchor = { r: anchor.r + delta, c: anchor.c };
+    g.extendTo(focus.r + delta, focus.c);
+  }
+
+  moveColumns(delta: 1 | -1): void {
+    const g = this.grid;
+    if (!this.hasCells) return;
+    this.commitPending();
+    const { c0, c1 } = g.range;
+    const { anchor, focus } = g;
+    if (!this.doc.shiftColumns(c0, c1 - c0 + 1, delta)) return;
+    g.anchor = { r: anchor.r, c: anchor.c + delta };
+    g.extendTo(focus.r, focus.c + delta);
+  }
+
+  /** Inserts blank rows next to the selection, as many as are selected, or copies of `data` below it. */
+  insertRows(where: 'above' | 'below', data?: string[][]): void {
     if (!this.doc.loaded) return;
     this.commitPending();
     const g = this.grid;
     const { r0, r1 } = g.range;
-    const count = r1 - r0 + 1;
+    const count = data ? data.length : r1 - r0 + 1;
     const empty = g.rowCount === 0;
     const at = empty ? this.doc.rowCount : where === 'above' ? g.dataRow(r0) : g.dataRow(r1) + 1;
     const viewAt = empty ? 0 : where === 'above' ? r0 : r1 + 1;
     this.withPreservedView(() => {
-      this.doc.insertRows(at, empty ? 1 : count);
+      this.doc.insertRows(at, empty ? 1 : count, empty ? undefined : data);
       if (g.viewRows) {
         const n = empty ? 1 : count;
         const shifted = g.viewRows.map((d) => (d >= at ? d + n : d));
@@ -1023,16 +1097,23 @@ export class AppState {
       { id: 'edit.paste', title: 'Paste', group: 'Edit', shortcut: 'Ctrl+V', nativeKey: true, when: loaded, run: () => this.paste() },
       { id: 'edit.clear', title: 'Clear cells', group: 'Edit', shortcut: 'Delete', altShortcuts: ['Backspace'], when: hasRows, run: () => this.clearSelection() },
       { id: 'edit.fillDown', title: 'Fill down', group: 'Edit', shortcut: 'Ctrl+D', when: hasRows, run: () => this.fillDown() },
+      { id: 'edit.fillRight', title: 'Fill right', group: 'Edit', shortcut: 'Ctrl+R', when: hasRows, run: () => this.fillRight() },
+      { id: 'edit.copyHeaders', title: 'Copy with headers', group: 'Edit', shortcut: 'Ctrl+Shift+C', when: hasRows, run: () => this.copyWithHeaders() },
       { id: 'edit.selectAll', title: 'Select all', group: 'Edit', shortcut: 'Ctrl+A', when: hasRows, run: () => this.grid.selectAll() },
 
       { id: 'rows.insertBelow', title: 'Insert row below', group: 'Rows', shortcut: 'Ctrl+Enter', when: loaded, run: () => this.insertRows('below') },
       { id: 'rows.insertAbove', title: 'Insert row above', group: 'Rows', shortcut: 'Ctrl+Shift+Enter', when: loaded, run: () => this.insertRows('above') },
       { id: 'rows.delete', title: () => (this.grid.range.r1 > this.grid.range.r0 ? 'Delete selected rows' : 'Delete row'), group: 'Rows', shortcut: 'Ctrl+Shift+K', when: hasRows, run: () => this.deleteRows() },
+      { id: 'rows.duplicate', title: () => (this.grid.range.r1 > this.grid.range.r0 ? 'Duplicate selected rows' : 'Duplicate row'), group: 'Rows', shortcut: 'Ctrl+Shift+D', when: hasRows, run: () => this.duplicateRows() },
+      { id: 'rows.moveUp', title: 'Move rows up', group: 'Rows', shortcut: 'Alt+ArrowUp', when: hasRows, run: () => this.moveRows(-1) },
+      { id: 'rows.moveDown', title: 'Move rows down', group: 'Rows', shortcut: 'Alt+ArrowDown', when: hasRows, run: () => this.moveRows(1) },
       { id: 'rows.goto', title: 'Go to row…', group: 'Rows', shortcut: 'Ctrl+G', global: true, when: hasRows, run: () => this.promptGotoRow() },
 
       { id: 'cols.insertRight', title: 'Insert column to the right', group: 'Columns', when: loaded, run: () => this.insertColumn('right') },
       { id: 'cols.insertLeft', title: 'Insert column to the left', group: 'Columns', when: loaded, run: () => this.insertColumn('left') },
       { id: 'cols.delete', title: () => (this.grid.range.c1 > this.grid.range.c0 ? 'Delete selected columns' : 'Delete column'), group: 'Columns', when: loaded, run: () => this.deleteColumns() },
+      { id: 'cols.moveLeft', title: 'Move columns left', group: 'Columns', shortcut: 'Alt+ArrowLeft', when: hasRows, run: () => this.moveColumns(-1) },
+      { id: 'cols.moveRight', title: 'Move columns right', group: 'Columns', shortcut: 'Alt+ArrowRight', when: hasRows, run: () => this.moveColumns(1) },
       { id: 'cols.rename', title: 'Rename column', group: 'Columns', when: () => this.doc.loaded && this.doc.hasHeader, run: () => (this.grid.editingHeader = this.grid.anchor.c) },
       { id: 'cols.sortAsc', title: 'Sort ascending', group: 'Columns', when: hasRows, run: () => this.sort('asc') },
       { id: 'cols.sortDesc', title: 'Sort descending', group: 'Columns', when: hasRows, run: () => this.sort('desc') },

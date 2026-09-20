@@ -16,11 +16,9 @@ export interface CellEdit {
 }
 
 /** Columns added or removed at these indices. `restored` marks columns brought back with their data. */
-export interface ColumnChange {
-  kind: 'insert' | 'remove';
-  at: number[];
-  restored?: boolean;
-}
+export type ColumnChange =
+  | { kind: 'insert' | 'remove'; at: number[]; restored?: boolean }
+  | { kind: 'move'; from: number; to: number };
 
 export interface LoadMeta {
   name: string;
@@ -274,13 +272,15 @@ export class Doc {
     return { rows: blockRows, cols: blockCols };
   }
 
-  insertRows(at: number, count = 1): void {
+  /** Inserts `count` blank rows, or copies of `data` when given. */
+  insertRows(at: number, count = 1, data?: string[][]): void {
     const width = this.columns.length;
+    const noun = data ? 'Duplicate' : 'Insert';
     this.exec(
       {
-        label: count === 1 ? 'Insert row' : `Insert ${count} rows`,
+        label: count === 1 ? `${noun} row` : `${noun} ${count} rows`,
         redo: () => {
-          const fresh = Array.from({ length: count }, () => new Array<string>(width).fill(''));
+          const fresh = Array.from({ length: count }, (_, i) => (data ? [...data[i]] : new Array<string>(width).fill('')));
           this.rows.splice(at, 0, ...fresh);
         },
         undo: () => {
@@ -357,6 +357,45 @@ export class Doc {
       },
       'structure',
     );
+  }
+
+  /** Moves the block of `count` rows starting at `from` one place up or down, by carrying its neighbour across it. */
+  shiftRows(from: number, count: number, delta: 1 | -1): boolean {
+    if (count < 1 || (delta < 0 ? from < 1 : from + count >= this.rows.length)) return false;
+    const carry = (block: number, dir: 1 | -1): void => {
+      if (dir < 0) this.rows.splice(block + count - 1, 0, this.rows.splice(block - 1, 1)[0]);
+      else this.rows.splice(block, 0, this.rows.splice(block + count, 1)[0]);
+    };
+    this.exec(
+      {
+        label: count === 1 ? 'Move row' : `Move ${count} rows`,
+        redo: () => carry(from, delta),
+        undo: () => carry(from + delta, -delta as 1 | -1),
+      },
+      'structure',
+    );
+    return true;
+  }
+
+  /** The column counterpart of `shiftRows`. */
+  shiftColumns(from: number, count: number, delta: 1 | -1): boolean {
+    if (count < 1 || (delta < 0 ? from < 1 : from + count >= this.columns.length)) return false;
+    const carry = (block: number, dir: 1 | -1): void => {
+      const source = dir < 0 ? block - 1 : block + count;
+      const target = dir < 0 ? block + count - 1 : block;
+      this.columns.splice(target, 0, this.columns.splice(source, 1)[0]);
+      for (const row of this.rows) row.splice(target, 0, row.splice(source, 1)[0]);
+      this.emitColumns({ kind: 'move', from: source, to: target });
+    };
+    this.exec(
+      {
+        label: count === 1 ? 'Move column' : `Move ${count} columns`,
+        redo: () => carry(from, delta),
+        undo: () => carry(from + delta, -delta as 1 | -1),
+      },
+      'structure',
+    );
+    return true;
   }
 
   renameColumn(c: number, name: string): void {

@@ -44,8 +44,8 @@ Alt+Enter for a line break inside a cell. Tab and Enter commit and move. Every c
 undoable, including sorts and structural changes.
 
 **Handles the whole sheet.** Range, row, column, and select-all selection. Copy, cut, and
-paste blocks to and from other apps. Fill down. Insert and delete rows and columns. Rename
-columns. Sort with type-aware comparison. Resize columns by dragging, or double-click the
+paste blocks to and from other apps. Fill down and right. Insert, duplicate, move, and delete
+rows and columns. Rename columns. Sort with type-aware comparison. Resize columns by dragging, or double-click the
 edge to fit.
 
 **Finds and replaces.** Matches are highlighted in the grid as you type. Step through them,
@@ -121,12 +121,16 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 | Cancel | Esc |
 | Clear cells | Delete or Backspace |
 | Cut, copy, paste | Ctrl+X, Ctrl+C, Ctrl+V |
-| Fill down | Ctrl+D |
+| Copy with column names | Ctrl+Shift+C |
+| Fill down, fill right | Ctrl+D, Ctrl+R |
 | Undo, redo | Ctrl+Z, Ctrl+Shift+Z |
 
 | Rows and columns | |
 | --- | --- |
 | Insert row below, insert row above | Ctrl+Enter, Ctrl+Shift+Enter |
+| Duplicate selected rows | Ctrl+Shift+D |
+| Move selected rows up or down | Alt+Up, Alt+Down |
+| Move selected columns left or right | Alt+Left, Alt+Right |
 | Delete selected rows | Ctrl+Shift+K |
 | Insert or delete columns | Right-click a header, or Ctrl+K |
 | Move onto the column headers | Up from the first row, then Left and Right |
@@ -156,7 +160,8 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 
 - Click a row number to select the row, a column header to select the column, the corner
   to select everything. Shift-click extends. Dragging past the edge scrolls.
-- Paste a single value into a multi-cell selection and it fills every cell.
+- Paste a single value into a multi-cell selection and it fills every cell. Paste a block
+  into a selection it divides evenly and it repeats to fill it.
 - Paste a block bigger than the sheet and the sheet grows to fit.
 - With "only matching rows" on, row numbers stay the real row numbers from the file.
 - The delimiter and encoding chips in the status bar switch how the file is read, or, once
@@ -234,7 +239,8 @@ green-charcoal rather than gray.
 Bedsheet opens delimited text. It will not become a spreadsheet. Formulas, charts, pivot
 tables, multiple sheets, cell formatting, cloud sync, and plugins are out of scope.
 
-Things that might land: column drag-to-reorder, freezing the first column, a wrap-text row
+Things that might land: dragging columns to reorder them (Alt+Left and Alt+Right already
+move them), freezing the first column, a wrap-text row
 mode, and reading `.xlsx` files (as import only).
 
 ## Building from source
