@@ -39,7 +39,8 @@ rather than column names is left in the sheet, and the columns are lettered inst
 14 MB file parses in about 200 ms and searches across 1.6 million cells in about 70 ms.
 Scrolling stays smooth at any size.
 
-**Edits the way you expect.** Start typing to replace a cell, press Enter or F2 to edit it,
+**Edits the way you expect.** Start typing to replace a cell (input methods, dead keys, and
+emoji pickers included), press Enter or F2 to edit it,
 Alt+Enter for a line break inside a cell. Tab and Enter commit and move. Every change is
 undoable, including sorts and structural changes.
 

@@ -68,7 +68,7 @@ export function shortcutKeys(combo: string): string[] {
 }
 
 export function isEditableTarget(t: EventTarget | null): boolean {
-  if (!(t instanceof HTMLElement)) return false;
+  if (!(t instanceof HTMLElement) || 'gridProxy' in t.dataset) return false;
   const tag = t.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
 }

@@ -24,6 +24,8 @@
   let viewH = $state(0);
   let hoverRow = $state(-1);
   let headerInput = $state<HTMLInputElement>();
+  let proxy = $state<HTMLTextAreaElement>();
+  let composing = $state(false);
 
   let rowH = $derived(Math.round(ROW_H * grid.zoom));
   let headH = $derived(Math.round(HEAD_H * grid.zoom));
@@ -260,7 +262,11 @@
     return () => vp.removeEventListener('wheel', onWheel);
   });
   grid.scrollIntoView = scrollIntoView;
-  grid.focusGrid = () => viewport?.focus({ preventScroll: true });
+  // Focus lives on a hidden text input so that IMEs and dead keys have somewhere to compose.
+  function focusGrid(): void {
+    proxy?.focus({ preventScroll: true });
+  }
+  grid.focusGrid = focusGrid;
 
   $effect(() =>
     doc.onChange((kind) => {
@@ -354,7 +360,7 @@
     if (app.menu) app.closeMenu();
     const hit = hitTest(e);
     if (hit.kind === 'none') {
-      viewport.focus({ preventScroll: true });
+      focusGrid();
       return;
     }
     if (grid.editingHeader !== null && hit.kind !== 'header') commitHeader();
@@ -391,7 +397,7 @@
         break;
     }
     if (drag) viewport.setPointerCapture(e.pointerId);
-    viewport.focus({ preventScroll: true });
+    focusGrid();
     e.preventDefault();
   }
 
@@ -497,7 +503,7 @@
       grid.selectAll();
       items = cellMenu();
     } else return;
-    viewport?.focus({ preventScroll: true });
+    focusGrid();
     app.openMenu({ x: e.clientX, y: e.clientY, items });
   }
 
@@ -612,7 +618,21 @@
     if (grid.inHeader && (!doc.hasHeader || (rowCount > 0 && !fullCols))) grid.inHeader = false;
   });
 
+  /** Starts an edit with text that reached the proxy: a finished composition, an emoji picker, and so on. */
+  function takeProxyText(): void {
+    const text = proxy?.value ?? '';
+    if (proxy) proxy.value = '';
+    if (text === '' || app.menu || grid.editing || grid.editingHeader !== null) return;
+    if (grid.inHeader) {
+      grid.headerDraft = text;
+      grid.editingHeader = grid.anchor.c;
+    } else {
+      grid.startEdit('replace', text);
+    }
+  }
+
   function onKeyDown(e: KeyboardEvent): void {
+    if (e.isComposing || e.keyCode === 229) return;
     if (app.menu || grid.editing || grid.editingHeader !== null) return;
     if (colCount === 0) return;
     if (grid.inHeader) {
@@ -730,13 +750,13 @@
       doc.renameColumn(c, value);
       grid.widths[c] = Math.max(grid.widths[c] ?? 0, fitColumn(c));
     }
-    viewport?.focus({ preventScroll: true });
+    focusGrid();
   }
   app.commitHeader = commitHeader;
   function cancelHeader(): void {
     grid.editingHeader = null;
     grid.headerDraft = null;
-    viewport?.focus({ preventScroll: true });
+    focusGrid();
   }
   function onHeaderKey(e: KeyboardEvent): void {
     if (e.key === 'Enter') {
@@ -776,7 +796,7 @@
   class="viewport"
   class:mono={grid.mono}
   class:resizing={false}
-  tabindex="0"
+  tabindex="-1"
   role="grid"
   aria-rowcount={rowCount}
   aria-colcount={colCount}
@@ -799,6 +819,9 @@
   oncopy={onCopy}
   oncut={onCut}
   onpaste={onPaste}
+  onfocus={(e) => {
+    if (e.target === viewport) focusGrid();
+  }}
 >
   <div class="sizer" class:scaled style:width="{sizerW}px" style:height="{sizerH}px">
     <div class="head" style:width="{gutterW + totalW}px">
@@ -909,6 +932,29 @@
       ></div>
     {/if}
 
+    <textarea
+      class="proxy"
+      class:composing
+      data-grid-proxy
+      aria-label="Cell input"
+      rows="1"
+      spellcheck="false"
+      autocomplete="off"
+      bind:this={proxy}
+      style:left="{activeRect?.left ?? 0}px"
+      style:top="{activeRect?.top ?? 0}px"
+      style:width="{activeRect?.width ?? 1}px"
+      style:height="{activeRect?.height ?? 1}px"
+      oncompositionstart={() => (composing = rowCount > 0 && colCount > 0)}
+      oncompositionend={() => {
+        composing = false;
+        takeProxyText();
+      }}
+      oninput={() => {
+        if (!composing) takeProxyText();
+      }}
+    ></textarea>
+
     {#if grid.editing && activeRect}
       <CellEditor
         edit={grid.editing}
@@ -916,7 +962,7 @@
         top={activeRect.top}
         width={activeRect.width}
         height={activeRect.height}
-        onDone={() => viewport?.focus({ preventScroll: true })}
+        onDone={focusGrid}
       />
     {/if}
   </div>
@@ -1181,6 +1227,27 @@
     opacity: 1;
   }
 
+  .proxy {
+    position: absolute;
+    z-index: 3;
+    margin: 0;
+    padding: 0 10px;
+    border: 0;
+    resize: none;
+    overflow: hidden;
+    white-space: pre;
+    outline: none;
+    font: inherit;
+    line-height: var(--row-h);
+    color: var(--ink);
+    background: var(--sheet);
+    box-shadow: inset 0 0 0 2px var(--accent);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .proxy.composing {
+    opacity: 1;
+  }
   .sel-rect {
     position: absolute;
     z-index: 1;
