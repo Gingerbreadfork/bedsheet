@@ -31,6 +31,15 @@ const MAX_UNDO = 500;
 const UNREACHABLE: Command = { label: '', redo() {}, undo() {} };
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
+/** `list` with `items` inserted at `at`. Avoids spreading a long list into call arguments. */
+function insertedAt<T>(list: T[], at: number, items: T[]): T[] {
+  if (items.length < 10_000) {
+    list.splice(at, 0, ...items);
+    return list;
+  }
+  return [...list.slice(0, at), ...items, ...list.slice(at)];
+}
+
 export class Doc {
   rev = $state(0);
   loaded = $state(false);
@@ -281,7 +290,7 @@ export class Doc {
         label: count === 1 ? `${noun} row` : `${noun} ${count} rows`,
         redo: () => {
           const fresh = Array.from({ length: count }, (_, i) => (data ? [...data[i]] : new Array<string>(width).fill('')));
-          this.rows.splice(at, 0, ...fresh);
+          this.rows = insertedAt(this.rows, at, fresh);
         },
         undo: () => {
           this.rows.splice(at, count);
@@ -304,7 +313,12 @@ export class Doc {
           this.rows = this.rows.filter((_, i) => !drop.has(i));
         },
         undo: () => {
-          for (let k = 0; k < sorted.length; k++) this.rows.splice(sorted[k], 0, removed[k]);
+          const kept = this.rows;
+          const merged = new Array<string[]>(kept.length + sorted.length);
+          for (let i = 0, k = 0, j = 0; i < merged.length; i++) {
+            merged[i] = sorted[k] === i ? removed[k++] : kept[j++];
+          }
+          this.rows = merged;
         },
       },
       'structure',

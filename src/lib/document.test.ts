@@ -167,3 +167,33 @@ describe('moving rows and columns', () => {
     expect(d.rows).toEqual([['1', '2', '3']]);
   });
 });
+
+describe('large row operations', () => {
+  const big = (): Doc => load('n\n' + Array.from({ length: 150_000 }, (_, i) => i).join('\n') + '\n');
+
+  it('inserts and removes a very large block of rows', () => {
+    const d = big();
+    d.insertRows(10, 150_000);
+    expect(d.rowCount).toBe(300_000);
+    expect(d.cell(9, 0)).toBe('9');
+    expect(d.cell(10, 0)).toBe('');
+    expect(d.cell(150_010, 0)).toBe('10');
+    d.undo();
+    expect(d.rowCount).toBe(150_000);
+    expect(d.cell(10, 0)).toBe('10');
+  });
+
+  it('restores scattered deleted rows in place, quickly', () => {
+    const d = big();
+    const odd = Array.from({ length: 75_000 }, (_, i) => i * 2 + 1);
+    d.deleteRows(odd);
+    expect(d.rowCount).toBe(75_000);
+    expect(d.cell(1, 0)).toBe('2');
+    const started = performance.now();
+    d.undo();
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(d.rowCount).toBe(150_000);
+    expect(d.cell(1, 0)).toBe('1');
+    expect(d.cell(149_999, 0)).toBe('149999');
+  });
+});
