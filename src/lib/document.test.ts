@@ -51,3 +51,36 @@ describe('sortBy', () => {
     expect(column(d)).toEqual(['3', '1', '2']);
   });
 });
+
+describe('dirty tracking', () => {
+  it('follows undo and redo around a save', () => {
+    const d = load('a\nx\n');
+    d.setCell(0, 0, 'y');
+    expect(d.dirty).toBe(true);
+    d.markSaved('/tmp/t.csv', 't.csv');
+    expect(d.dirty).toBe(false);
+    d.undo();
+    expect(d.dirty).toBe(true);
+    d.redo();
+    expect(d.dirty).toBe(false);
+  });
+
+  it('stays dirty when the undo history no longer reaches the saved state', () => {
+    const d = load('a\nx\n');
+    for (let i = 0; i < 501; i++) d.setCell(0, 0, `v${i}`);
+    while (d.canUndo) d.undo();
+    expect(d.cell(0, 0)).toBe('v0');
+    expect(d.dirty).toBe(true);
+  });
+
+  it('stays dirty for edits made while a save was in flight', () => {
+    const d = load('a\nx\n');
+    d.setCell(0, 0, 'saved');
+    const point = d.savePoint();
+    d.setCell(0, 0, 'typed during save');
+    d.markSaved('/tmp/t.csv', 't.csv', point);
+    expect(d.dirty).toBe(true);
+    d.undo();
+    expect(d.dirty).toBe(false);
+  });
+});

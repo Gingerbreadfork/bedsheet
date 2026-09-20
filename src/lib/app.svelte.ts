@@ -261,9 +261,10 @@ export class AppState {
     this.commitEdit?.();
     const name = /\.[a-z0-9]{1,5}$/i.test(this.doc.name) ? this.doc.name : `${this.doc.name}.csv`;
     try {
+      const savePoint = this.doc.savePoint();
       const result = await saveText(this.doc.toText(), name, this.doc.path, forcePrompt);
       if (!result) return false;
-      this.doc.markSaved(result.path, result.name);
+      this.doc.markSaved(result.path, result.name, savePoint);
       if (result.path) this.recent = pushRecent(result.path, result.name);
       this.toast(`Saved ${result.name}`, 'success');
       return true;

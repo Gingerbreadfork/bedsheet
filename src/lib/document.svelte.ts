@@ -21,6 +21,7 @@ export interface LoadMeta {
 }
 
 const MAX_UNDO = 500;
+const UNREACHABLE: Command = { label: '', redo() {}, undo() {} };
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 export class Doc {
@@ -124,12 +125,17 @@ export class Doc {
     return serializeCsv(all, this.delimiter, this.lineEnding);
   }
 
-  markSaved(path: string | null, name: string): void {
+  /** The current undo position, to pass to `markSaved` once a write started now has finished. */
+  savePoint(): Command | null {
+    return this.undoStack[this.undoStack.length - 1] ?? null;
+  }
+
+  markSaved(path: string | null, name: string, savePoint: Command | null = this.savePoint()): void {
     this.path = path;
     this.name = name;
-    this.cleanTop = this.undoStack[this.undoStack.length - 1] ?? null;
+    this.cleanTop = savePoint;
     this.sourceText = null;
-    this.dirty = false;
+    this.dirty = this.savePoint() !== savePoint;
   }
 
   undo(): string | null {
@@ -422,7 +428,11 @@ export class Doc {
   private exec(cmd: Command, kind: 'cell' | 'structure'): void {
     cmd.redo();
     this.undoStack.push(cmd);
-    if (this.undoStack.length > MAX_UNDO) this.undoStack.shift();
+    if (this.undoStack.length > MAX_UNDO) {
+      const dropped = this.undoStack.shift();
+      if (this.cleanTop === null) this.cleanTop = UNREACHABLE;
+      else if (this.cleanTop === dropped) this.cleanTop = null;
+    }
     this.redoStack = [];
     this.touch(kind);
   }
