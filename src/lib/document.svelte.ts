@@ -422,13 +422,14 @@ export class Doc {
     const width = this.columns.length;
     const letters = Array.from({ length: width }, (_, i) => columnLetter(i));
     let savedNames: string[] = [];
+    const tookRow = value && this.rows.length > 0;
     this.exec(
       {
         label: value ? 'Use first row as header' : 'Treat header as data',
         redo: () => {
           if (value) {
             savedNames = this.columns;
-            this.columns = this.rows.length > 0 ? this.rows.shift()! : letters.slice();
+            this.columns = tookRow ? this.rows.shift()! : letters.slice();
             this.hasHeader = true;
           } else {
             this.rows.unshift(this.columns);
@@ -438,7 +439,7 @@ export class Doc {
         },
         undo: () => {
           if (value) {
-            this.rows.unshift(this.columns);
+            if (tookRow) this.rows.unshift(this.columns);
             this.columns = savedNames;
             this.hasHeader = false;
           } else {

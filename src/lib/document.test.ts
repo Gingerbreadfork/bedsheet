@@ -95,3 +95,23 @@ describe('dirty tracking', () => {
     expect(d.dirty).toBe(false);
   });
 });
+
+describe('setHasHeader', () => {
+  it('moves the first row into the header and back', () => {
+    const d = load('a,b\n1,2\n');
+    d.setHasHeader(false);
+    expect(d.rows).toEqual([['a', 'b'], ['1', '2']]);
+    expect(d.toText()).toBe('a,b\n1,2\n');
+    d.undo();
+    expect(d.columns).toEqual(['a', 'b']);
+    expect(d.rows).toEqual([['1', '2']]);
+  });
+
+  it('does not invent a row when undone on an empty sheet', () => {
+    const d = new Doc();
+    d.newSheet(0, 2);
+    d.setHasHeader(true);
+    d.undo();
+    expect(d.rows).toEqual([]);
+  });
+});
