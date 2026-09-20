@@ -32,6 +32,10 @@ export class GridState {
   focus = $state.raw<Pos>({ r: 0, c: 0 });
   editing = $state.raw<EditState | null>(null);
   editingHeader = $state<number | null>(null);
+  /** The keyboard cursor is on the column headers rather than in the cells. */
+  inHeader = $state(false);
+  /** Text to start a header rename with, when it was begun by typing. */
+  headerDraft: string | null = null;
   widths = $state<number[]>([]);
   zoom = $state(1);
   mono = $state(false);

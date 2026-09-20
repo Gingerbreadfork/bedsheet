@@ -124,7 +124,8 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 | Insert row below, insert row above | Ctrl+Enter, Ctrl+Shift+Enter |
 | Delete selected rows | Ctrl+Shift+K |
 | Insert or delete columns | Right-click a header, or Ctrl+K |
-| Rename a column | Double-click its header |
+| Move onto the column headers | Up from the first row, then Left and Right |
+| Rename a column | Enter or just type on its header, or double-click it |
 | Resize a column, fit it to content | Drag the header edge, double-click it |
 | Sort by a column | Right-click its header |
 | Use the first row as the header | Header row toggle in the status bar |

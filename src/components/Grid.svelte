@@ -343,6 +343,7 @@
     }
     if (grid.editingHeader !== null && hit.kind !== 'header') commitHeader();
     app.commitEdit?.();
+    grid.inHeader = false;
     switch (hit.kind) {
       case 'corner':
         grid.selectAll();
@@ -352,6 +353,7 @@
         commitHeader();
         if (e.shiftKey) grid.selectCols(grid.anchor.c, hit.c);
         else grid.selectCols(hit.c, hit.c);
+        grid.inHeader = doc.hasHeader;
         drag = { kind: 'cols' };
         break;
       case 'gutter':
@@ -455,6 +457,7 @@
       grid.select(hit.r, hit.c, false);
       grid.startEdit('edit');
     } else if (hit.kind === 'header' && doc.hasHeader) {
+      grid.inHeader = true;
       grid.editingHeader = hit.c;
     }
   }
@@ -539,11 +542,74 @@
 
   // ---------- keyboard ----------
 
+  /** Keys while the cursor sits on the column headers. Returns false for keys it leaves alone. */
+  function onHeaderNavKey(e: KeyboardEvent): boolean {
+    const c = grid.focus.c;
+    const plain = !e.ctrlKey && !e.altKey && !e.metaKey;
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'Escape':
+        grid.inHeader = false;
+        grid.select(Math.max(0, Math.floor(vTop / rowH)), c);
+        return true;
+      case 'ArrowUp':
+        return true;
+      case 'ArrowLeft':
+      case 'ArrowRight':
+      case 'Tab': {
+        const back = e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey);
+        const next = Math.min(colCount - 1, Math.max(0, c + (back ? -1 : 1)));
+        if (e.shiftKey && e.key !== 'Tab') grid.selectCols(grid.anchor.c, next);
+        else grid.selectCols(next, next);
+        scrollIntoView({ r: Math.max(0, Math.floor(vTop / rowH)), c: next });
+        return true;
+      }
+      case 'Home':
+      case 'End': {
+        const next = e.key === 'Home' ? 0 : colCount - 1;
+        grid.selectCols(next, next);
+        scrollIntoView({ r: Math.max(0, Math.floor(vTop / rowH)), c: next });
+        return true;
+      }
+      case 'Enter':
+      case 'F2':
+        if (e.ctrlKey) return false;
+        grid.editingHeader = grid.anchor.c;
+        return true;
+      default:
+        if (plain && e.key.length === 1) {
+          grid.headerDraft = e.key;
+          grid.editingHeader = grid.anchor.c;
+          return true;
+        }
+        return false;
+    }
+  }
+
+  $effect(() => {
+    if (grid.inHeader && (!doc.hasHeader || (rowCount > 0 && !fullCols))) grid.inHeader = false;
+  });
+
   function onKeyDown(e: KeyboardEvent): void {
     if (app.menu || grid.editing || grid.editingHeader !== null) return;
-    if (rowCount === 0 || colCount === 0) return;
+    if (colCount === 0) return;
+    if (grid.inHeader) {
+      if (onHeaderNavKey(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
     const ctrl = e.ctrlKey;
     const shift = e.shiftKey;
+    if (e.key === 'ArrowUp' && !ctrl && !shift && doc.hasHeader && (rowCount === 0 || grid.anchor.r === 0)) {
+      grid.selectCols(grid.anchor.c, grid.anchor.c);
+      grid.inHeader = true;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (rowCount === 0) return;
     const pageRows = Math.max(1, Math.floor((viewH - headH) / rowH) - 1);
     let handled = true;
     switch (e.key) {
@@ -636,12 +702,17 @@
     if (c === null) return;
     const value = headerInput?.value ?? doc.columns[c];
     grid.editingHeader = null;
-    if (value.trim() !== '' && value !== doc.columns[c]) doc.renameColumn(c, value);
+    grid.headerDraft = null;
+    if (value.trim() !== '' && value !== doc.columns[c]) {
+      doc.renameColumn(c, value);
+      grid.widths[c] = Math.max(grid.widths[c] ?? 0, fitColumn(c));
+    }
     viewport?.focus({ preventScroll: true });
   }
   app.commitHeader = commitHeader;
   function cancelHeader(): void {
     grid.editingHeader = null;
+    grid.headerDraft = null;
     viewport?.focus({ preventScroll: true });
   }
   function onHeaderKey(e: KeyboardEvent): void {
@@ -668,7 +739,7 @@
       scrollIntoView({ r: Math.max(0, Math.floor(vTop / rowH)), c: grid.editingHeader });
       tick().then(() => {
         headerInput?.focus();
-        headerInput?.select();
+        if (grid.headerDraft === null) headerInput?.select();
       });
     }
   });
@@ -718,6 +789,7 @@
           class:full={inSel && fullCols}
           class:num={colTypes[c] === 'number'}
           class:editing={grid.editingHeader === c}
+          class:focus={grid.inHeader && c === grid.focus.c}
           data-c={c}
           style:left="{gutterW + colLefts[c]}px"
           style:width="{w}px"
@@ -726,7 +798,7 @@
             <input
               class="hinput"
               bind:this={headerInput}
-              value={doc.columns[c]}
+              value={grid.headerDraft ?? doc.columns[c]}
               spellcheck="false"
               onkeydown={onHeaderKey}
               onblur={commitHeader}
@@ -798,7 +870,7 @@
         style:height="{selRect.height}px"
       ></div>
     {/if}
-    {#if activeRect}
+    {#if activeRect && !grid.inHeader}
       <div
         class="cursor"
         class:editing={grid.editing !== null}
@@ -891,6 +963,12 @@
   .hcell.full {
     background: var(--accent-soft-2);
     box-shadow: inset -1px 0 0 var(--line), inset 0 -2px 0 var(--accent);
+  }
+  .hcell.focus {
+    box-shadow: inset 0 0 0 2px var(--cursor);
+  }
+  .viewport:not(:focus-within) .hcell.focus {
+    box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--cursor) 45%, transparent);
   }
   .hlabel {
     overflow: hidden;

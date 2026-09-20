@@ -18,6 +18,8 @@
     { title: 'Select row', keys: 'Shift+Space' },
     { title: 'Select column', keys: 'Ctrl+Space' },
     { title: 'Top / bottom of sheet', keys: 'Ctrl+Home' },
+    { title: 'Onto the column headers, from the first row', keys: 'ArrowUp' },
+    { title: 'Rename the focused header', keys: 'Enter' },
   ];
 
   let groups = $derived(
