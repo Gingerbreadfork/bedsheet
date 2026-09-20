@@ -24,7 +24,7 @@
   });
 
   $effect(() => {
-    const title = doc.loaded ? `${doc.dirty ? '• ' : ''}${doc.name} — bedsheet` : 'bedsheet';
+    const title = doc.loaded ? `${doc.dirty ? '• ' : ''}${doc.name} — Bedsheet` : 'Bedsheet';
     document.title = title;
     if (isTauri) void win.setTitle(title);
   });

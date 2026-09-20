@@ -2,7 +2,7 @@
   <img src="docs/icon.png" width="96" alt="">
 </p>
 
-<h1 align="center">bedsheet</h1>
+<h1 align="center">Bedsheet</h1>
 
 <p align="center">
   A CSV editor for Linux that is fast, focused, and genuinely nice to look at.<br>
@@ -12,7 +12,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-    <img src="docs/screenshot-light.png" width="920" alt="bedsheet showing an inventory CSV with a block of numbers selected and their sum, average, and count in the status bar">
+    <img src="docs/screenshot-light.png" width="920" alt="Bedsheet showing an inventory CSV with a block of numbers selected and their sum, average, and count in the status bar">
   </picture>
 </p>
 
@@ -23,7 +23,7 @@ maybe sort it or find something, and save it. Spreadsheet apps make you wade thr
 formulas, formatting, charts, and ribbons to do that, and then they quietly mangle your
 file on the way out.
 
-bedsheet does the small job well. It opens delimited text instantly, gets out of your way,
+Bedsheet does the small job well. It opens delimited text instantly, gets out of your way,
 and writes the file back the way it came in. It also looks like something you'd want to
 keep open.
 
@@ -71,16 +71,16 @@ Grab the package for your distribution from the
 
 ```sh
 # Fedora, RHEL, openSUSE
-sudo dnf install ./bedsheet-*.x86_64.rpm
+sudo dnf install ./Bedsheet-*.x86_64.rpm
 
 # Debian, Ubuntu, Mint
-sudo apt install ./bedsheet_*_amd64.deb
+sudo apt install ./Bedsheet_*_amd64.deb
 
 # Anything else
-chmod +x bedsheet_*.AppImage && ./bedsheet_*.AppImage
+chmod +x Bedsheet_*.AppImage && ./Bedsheet_*.AppImage
 ```
 
-The packages register bedsheet as a handler for `.csv` and `.tsv` files, so it shows up in
+The packages register Bedsheet as a handler for `.csv` and `.tsv` files, so it shows up in
 "Open with" in your file manager.
 
 ## Using it
@@ -161,7 +161,7 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 
 ## Your file comes back the way it went in
 
-This is the part spreadsheet apps get wrong, so it's the part bedsheet is strict about.
+This is the part spreadsheet apps get wrong, so it's the part Bedsheet is strict about.
 
 - **Values are never reformatted.** `007` stays `007`. `1,000` stays `1,000`. Dates stay
   whatever string they were. Alignment and number detection are display-only.
@@ -176,7 +176,7 @@ This is the part spreadsheet apps get wrong, so it's the part bedsheet is strict
   every field, or every text field, is written back the same way, and a file that doesn't
   gets no extra quotes.
 - **Other programs' changes aren't trampled.** If the file changes on disk while it's open,
-  bedsheet offers to reload it, and asks before saving over it.
+  Bedsheet offers to reload it, and asks before saving over it.
 - **Writes are atomic.** The file is written to a temporary sibling and renamed into place,
   so a crash mid-save can't leave you with half a file.
 
@@ -223,7 +223,7 @@ green-charcoal rather than gray.
 
 ## Not planned
 
-bedsheet opens delimited text. It will not become a spreadsheet. Formulas, charts, pivot
+Bedsheet opens delimited text. It will not become a spreadsheet. Formulas, charts, pivot
 tables, multiple sheets, cell formatting, cloud sync, and plugins are out of scope.
 
 Things that might land: column drag-to-reorder, freezing the first column, a wrap-text row
@@ -259,7 +259,7 @@ On distributions with recent binutils, linuxdeploy's bundled `strip` can't read 
 libraries it copies into the AppImage. If the AppImage step fails, build with
 `NO_STRIP=true pnpm tauri build`. The .deb and .rpm are unaffected.
 
-bedsheet is built and tested on Fedora with GNOME on Wayland. It should run on any Linux
+Bedsheet is built and tested on Fedora with GNOME on Wayland. It should run on any Linux
 desktop with WebKitGTK 4.1.
 
 ## License

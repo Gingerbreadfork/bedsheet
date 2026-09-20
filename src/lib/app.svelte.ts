@@ -348,7 +348,7 @@ export class AppState {
       } else {
         this.doc.encoding = 'UTF-8';
         const multi = ENCODINGS.find((e) => e.id === wanted)?.kind === 'multi';
-        const why = multi ? `bedsheet can’t write ${wanted}` : `${wanted} can’t hold every character in it`;
+        const why = multi ? `Bedsheet can’t write ${wanted}` : `${wanted} can’t hold every character in it`;
         this.toast(`Saved ${result.name} as UTF-8 because ${why}`, 'info', 6000);
       }
       return true;

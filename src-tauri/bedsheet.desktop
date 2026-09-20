@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=bedsheet
+Name=Bedsheet
 Comment=A focused CSV editor
 Exec=bedsheet %F
 Icon=bedsheet

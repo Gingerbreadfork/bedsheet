@@ -32,7 +32,7 @@
 
 <header class="bar" data-tauri-drag-region>
   <div class="side" data-tauri-drag-region>
-    <div class="mark" title="bedsheet">
+    <div class="mark" title="Bedsheet">
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
         <path d="M3 8.5a6 6 0 0 1 12 0V16l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L3 16Z" fill="var(--sheet)" stroke="var(--ink-2)" stroke-width="1.25" stroke-linejoin="round" />
         <path d="M3 11h12M7.2 3.2v10.6M10.8 3.2v10.6" stroke="var(--line-strong)" stroke-width="1" />
@@ -57,7 +57,7 @@
         <span class="dirty" title="Unsaved changes"></span>
       {/if}
     {:else}
-      <span class="name quiet" data-tauri-drag-region>bedsheet</span>
+      <span class="name quiet" data-tauri-drag-region>Bedsheet</span>
     {/if}
   </div>
 
