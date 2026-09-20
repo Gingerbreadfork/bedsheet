@@ -76,6 +76,7 @@ export interface Toast {
 
 const nextFrame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 let toastId = 0;
+const sameText = (a: string, b: string): boolean => a.replaceAll('\r\n', '\n') === b.replaceAll('\r\n', '\n');
 
 export class AppState {
   doc = new Doc();
@@ -110,6 +111,7 @@ export class AppState {
   private bindings: { s: Shortcut; cmd: CommandDef }[] = [];
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private preserveView = false;
+  private copied: { text: string; block: string[][] } | null = null;
 
   constructor() {
     this.grid.mono = loadSetting('mono', false);
@@ -350,16 +352,19 @@ export class AppState {
     return edits;
   }
 
+  /** Text for the clipboard. The block is remembered so pasting it back keeps every cell intact. */
   selectionText(): string {
     if (!this.hasCells) return '';
     const { r0, c0, r1, c1 } = this.grid.range;
-    const rows: string[][] = [];
+    const block: string[][] = [];
     for (let vr = r0; vr <= r1; vr++) {
       const r = this.grid.dataRow(vr);
-      rows.push(this.doc.rows[r].slice(c0, c1 + 1));
+      block.push(this.doc.rows[r].slice(c0, c1 + 1));
     }
-    if (rows.length === 1 && rows[0].length === 1) return rows[0][0];
-    return serializeCsv(rows, '\t', '\n');
+    const single = block.length === 1 && block[0].length === 1;
+    const text = single ? block[0][0] : serializeCsv(block, '\t', '\n');
+    this.copied = { text, block };
+    return text;
   }
 
   async copy(): Promise<void> {
@@ -386,7 +391,8 @@ export class AppState {
   pasteText(text: string): void {
     if (!this.doc.loaded || !text) return;
     this.commitPending();
-    const block = parseClipboardBlock(text);
+    const own = this.copied && sameText(this.copied.text, text) ? this.copied.block : null;
+    const block = own ? own.map((row) => [...row]) : parseClipboardBlock(text);
     const g = this.grid;
     const { r0, c0, r1, c1 } = g.range;
     const single = block.length === 1 && block[0].length === 1;

@@ -115,3 +115,32 @@ describe('column widths', () => {
     expect(app.grid.widths).toEqual([50, 140, 200, 300]);
   });
 });
+
+describe('clipboard', () => {
+  it('pastes a copied multi-line cell back as one cell', () => {
+    load('h\n"line1\nline2"\nplain\n');
+    app.grid.select(0, 0, false);
+    const text = app.selectionText();
+    expect(text).toBe('line1\nline2');
+    app.grid.select(1, 0, false);
+    app.pasteText(text);
+    expect(column()).toEqual(['line1\nline2', 'line1\nline2']);
+  });
+
+  it('still splits lines that came from somewhere else', () => {
+    load('h\na\nb\n');
+    app.grid.select(0, 0, false);
+    app.pasteText('x\ny');
+    expect(column()).toEqual(['x', 'y']);
+  });
+
+  it('round-trips a block with tabs, quotes and line breaks', () => {
+    load('a,b\n"t\tab","say ""hi"""\n"two\nlines",plain\n');
+    app.grid.selectAll();
+    const text = app.selectionText();
+    app.doc.clearRange(0, 0, 1, 1);
+    app.grid.select(0, 0, false);
+    app.pasteText(text);
+    expect(app.doc.rows).toEqual([['t\tab', 'say "hi"'], ['two\nlines', 'plain']]);
+  });
+});
