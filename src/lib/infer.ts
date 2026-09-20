@@ -76,3 +76,26 @@ export function inferAllColumnTypes(rows: readonly (readonly string[])[], colCou
   for (let c = 0; c < colCount; c++) out[c] = inferColumnType(rows, c);
   return out;
 }
+
+const YEAR = /^(?:19|20)\d{2}$/;
+
+/**
+ * False only when the first row clearly reads as data: every cell above a typed column has that
+ * column's type. Text-only tables, and year labels over numeric columns, are taken as headers.
+ */
+export function looksLikeHeader(rows: readonly (readonly string[])[]): boolean {
+  if (rows.length < 2) return true;
+  const first = rows[0];
+  const body = rows.slice(1, 201);
+  const dataLike: string[] = [];
+  for (let c = 0; c < first.length; c++) {
+    const cell = first[c].trim();
+    if (cell === '') continue;
+    const type = inferColumnType(body, c);
+    if (type !== 'number' && type !== 'date' && type !== 'bool') continue;
+    const same = type === 'number' ? isNumeric(cell) : type === 'date' ? isDate(cell) : BOOL.test(cell);
+    if (!same) return true;
+    dataLike.push(cell);
+  }
+  return dataLike.length === 0 || dataLike.every((cell) => YEAR.test(cell));
+}

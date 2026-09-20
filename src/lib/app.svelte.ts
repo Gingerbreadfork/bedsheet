@@ -314,6 +314,9 @@ export class AppState {
       this.grid.editing = null;
       this.grid.select(0, 0, false);
       if (file.path) this.recent = pushRecent(file.path, file.name);
+      if (!this.doc.hasHeader && this.doc.rowCount > 0) {
+        this.toast('The first row looks like data, so the columns are lettered. Use “Header row” if it is a header.', 'info', 5000);
+      }
       if (this.doc.ragged) this.toast('Some rows were shorter than others. They were padded with empty cells.', 'info', 3600);
     } catch (e) {
       this.toast(`Couldn’t read ${file.name}: ${String(e)}`, 'error', 4000);

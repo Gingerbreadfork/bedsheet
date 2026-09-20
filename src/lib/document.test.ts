@@ -115,3 +115,19 @@ describe('setHasHeader', () => {
     expect(d.rows).toEqual([]);
   });
 });
+
+describe('loadText', () => {
+  it('uses the first row as the header when it reads like one', () => {
+    const d = load('id,name\n1,ann\n2,bob\n');
+    expect(d.hasHeader).toBe(true);
+    expect(d.columns).toEqual(['id', 'name']);
+  });
+
+  it('letters the columns when the first row is data, and saves it back unchanged', () => {
+    const d = load('1,ann\n2,bob\n3,cy\n');
+    expect(d.hasHeader).toBe(false);
+    expect(d.columns).toEqual(['A', 'B']);
+    expect(d.rowCount).toBe(3);
+    expect(d.toText()).toBe('1,ann\n2,bob\n3,cy\n');
+  });
+});

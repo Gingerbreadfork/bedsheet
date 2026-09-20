@@ -32,7 +32,8 @@ keep open.
 **Reads anything delimited.** CSV, TSV, semicolons, pipes, or any single character you
 choose. The delimiter, line endings, and
 encoding are detected on open (UTF-8 with or without BOM, UTF-16 with or without one, and a
-Windows-1252 fallback). Files with short rows are padded and you're told about it.
+Windows-1252 fallback). Files with short rows are padded and you're told about it. A first row that is plainly data
+rather than column names is left in the sheet, and the columns are lettered instead.
 
 **Stays fast.** The grid only renders what's on screen, in both directions. A 200,000-row,
 14 MB file parses in about 200 ms and searches across 1.6 million cells in about 70 ms.

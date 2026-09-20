@@ -1,5 +1,5 @@
 import { parseCsv, serializeCsv, detectDelimiter, columnLetter, MINIMAL_QUOTING, type LineEnding, type Quoting } from './csv';
-import { inferColumnType, toNumber, toTimestamp, detectDateOrder } from './infer';
+import { inferColumnType, toNumber, toTimestamp, detectDateOrder, looksLikeHeader } from './infer';
 
 export interface Command {
   label: string;
@@ -117,10 +117,14 @@ export class Doc {
     this.ragged = parsed.ragged;
     this.name = meta.name;
     this.path = meta.path;
-    if (parsed.rows.length > 0) {
+    if (parsed.rows.length > 0 && looksLikeHeader(parsed.rows)) {
       this.columns = parsed.rows[0];
       this.rows = parsed.rows.slice(1);
       this.hasHeader = true;
+    } else if (parsed.rows.length > 0) {
+      this.columns = Array.from({ length: parsed.columnCount }, (_, i) => columnLetter(i));
+      this.rows = parsed.rows;
+      this.hasHeader = false;
     } else {
       this.columns = ['A'];
       this.rows = [];
