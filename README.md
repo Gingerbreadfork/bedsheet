@@ -151,8 +151,8 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 - Paste a single value into a multi-cell selection and it fills every cell.
 - Paste a block bigger than the sheet and the sheet grows to fit.
 - With "only matching rows" on, row numbers stay the real row numbers from the file.
-- The delimiter chip in the status bar switches how the file is read, or, once you've made
-  edits, how it will be saved.
+- The delimiter and encoding chips in the status bar switch how the file is read, or, once
+  you've made edits, how it will be saved.
 - The Mono chip switches cell text to a monospace face. Row numbers are always monospace.
 
 <p align="center">

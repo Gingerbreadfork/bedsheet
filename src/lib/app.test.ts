@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { app } from './app.svelte';
+
+vi.stubGlobal('requestAnimationFrame', (fn: () => void) => setTimeout(fn, 0));
 
 function load(text: string): void {
   app.doc.loadText(text, { name: 't.csv', path: '/tmp/t.csv', encoding: 'UTF-8' });
@@ -142,5 +144,28 @@ describe('clipboard', () => {
     app.grid.select(0, 0, false);
     app.pasteText(text);
     expect(app.doc.rows).toEqual([['t\tab', 'say "hi"'], ['two\nlines', 'plain']]);
+  });
+});
+
+describe('encoding', () => {
+  const latin = Uint8Array.from([0x6e, 0x0a, 0x63, 0x61, 0x66, 0xe9, 0x0a]);
+
+  it('re-reads an untouched file with another encoding', async () => {
+    await app.loadFile({ name: 'l.csv', path: null, bytes: latin });
+    expect(app.doc.encoding).toBe('Windows-1252');
+    expect(column()).toEqual(['café']);
+    app.setEncoding('Windows-1251');
+    expect(column()).toEqual(['cafй']);
+    expect(app.doc.dirty).toBe(false);
+  });
+
+  it('only changes how an edited file is saved', async () => {
+    await app.loadFile({ name: 'l.csv', path: null, bytes: latin });
+    app.doc.setCell(0, 0, 'thé');
+    app.setEncoding('UTF-8');
+    expect(column()).toEqual(['thé']);
+    expect(app.doc.encoding).toBe('UTF-8');
+    app.undo();
+    expect(app.doc.encoding).toBe('Windows-1252');
   });
 });

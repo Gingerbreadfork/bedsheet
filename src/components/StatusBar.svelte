@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app, type MenuItem } from '../lib/app.svelte';
   import { DELIMITERS, delimiterLabel } from '../lib/csv';
+  import { ENCODINGS } from '../lib/encoding';
   import { inferColumnType, isNumeric, toNumber } from '../lib/infer';
   import Icon from './Icon.svelte';
 
@@ -59,6 +60,21 @@
     }));
     app.openMenu({ x: r.left, y: r.top - 4, align: 'left', items, width: 160 });
   }
+
+  function encodingMenu(e: MouseEvent): void {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const items: MenuItem[] = [];
+    ENCODINGS.forEach((enc, i) => {
+      if (i > 0 && enc.kind !== ENCODINGS[i - 1].kind && (enc.kind === 'single' || enc.kind === 'multi')) items.push('sep');
+      items.push({
+        label: enc.id,
+        checked: doc.encoding === enc.id,
+        disabled: enc.kind === 'multi' && !app.canReinterpret,
+        run: () => app.setEncoding(enc.id),
+      });
+    });
+    app.openMenu({ x: r.left, y: r.top - 4, align: 'left', items, width: 190 });
+  }
 </script>
 
 <footer class="status">
@@ -94,7 +110,10 @@
         {delimiterLabel(doc.delimiter)}
         <Icon name="chevronUp" size={12} />
       </button>
-      <span class="chip static" title="Encoding">{doc.encoding}</span>
+      <button class="chip" title="Encoding" onclick={encodingMenu}>
+        {doc.encoding}
+        <Icon name="chevronUp" size={12} />
+      </button>
       <button class="chip" class:on={doc.hasHeader} title="Toggle header row" onclick={() => app.toggleHeader()}>
         <span class="check"><Icon name="check" size={12} /></span>
         Header row
@@ -182,14 +201,6 @@
   .chip:hover {
     background: var(--paper-3);
     color: var(--ink);
-  }
-  .chip.static {
-    color: var(--ink-3);
-    font-weight: 400;
-  }
-  .chip.static:hover {
-    background: transparent;
-    color: var(--ink-3);
   }
   .chip .check {
     display: inline-flex;

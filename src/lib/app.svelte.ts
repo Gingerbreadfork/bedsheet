@@ -113,6 +113,7 @@ export class AppState {
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private preserveView = false;
   private copied: { text: string; block: string[][] } | null = null;
+  private sourceBytes: Uint8Array | null = null;
 
   constructor() {
     this.grid.mono = loadSetting('mono', false);
@@ -256,6 +257,7 @@ export class AppState {
       const { text, encoding } = decodeBytes(file.bytes);
       this.resetFind();
       this.doc.loadText(text, { name: file.name, path: file.path, encoding });
+      this.sourceBytes = file.bytes;
       this.grid.widths = [];
       this.grid.editing = null;
       this.grid.select(0, 0, false);
@@ -273,6 +275,7 @@ export class AppState {
     if (!(await this.confirmDiscard())) return;
     this.commitPending();
     this.resetFind();
+    this.sourceBytes = null;
     this.doc.newSheet();
     this.grid.widths = [];
     this.grid.editing = null;
@@ -291,6 +294,7 @@ export class AppState {
       const bytes = encodeText(text, wanted);
       const result = await saveBytes(bytes ?? encodeText(text, 'UTF-8')!, name, this.doc.path, forcePrompt);
       if (!result) return false;
+      this.sourceBytes = null;
       this.doc.markSaved(result.path, result.name, savePoint);
       if (result.path) this.recent = pushRecent(result.path, result.name);
       if (bytes) {
@@ -311,6 +315,7 @@ export class AppState {
   async closeFile(): Promise<void> {
     if (!(await this.confirmDiscard())) return;
     this.commitPending();
+    this.sourceBytes = null;
     this.doc.close();
     this.clearFind();
   }
@@ -563,6 +568,27 @@ export class AppState {
     } else {
       this.doc.setDelimiter(d);
       this.toast(`Will save with ${delimiterLabel(d).toLowerCase()} delimiter`);
+    }
+  }
+
+  /** True while the file can still be re-read from its original bytes instead of only re-saved. */
+  get canReinterpret(): boolean {
+    return this.sourceBytes !== null && !this.doc.dirty;
+  }
+
+  setEncoding(id: string): void {
+    if (!this.doc.loaded || id === this.doc.encoding) return;
+    this.commitPending();
+    if (this.sourceBytes && !this.doc.dirty) {
+      const { text } = decodeBytes(this.sourceBytes, id);
+      const { name, path, delimiter } = this.doc;
+      this.doc.loadText(text, { name, path, encoding: id, delimiter });
+      this.grid.widths = [];
+      this.grid.select(0, 0, false);
+      this.toast(`Reading as ${id}`);
+    } else {
+      this.doc.setEncoding(id);
+      this.toast(`Will save as ${id}`);
     }
   }
 
@@ -836,6 +862,13 @@ export class AppState {
         group: 'View' as Group,
         when: () => this.doc.loaded && this.doc.delimiter !== d.char,
         run: () => this.setDelimiter(d.char),
+      })),
+      ...ENCODINGS.map((enc) => ({
+        id: `view.encoding.${enc.id}`,
+        title: `Encoding: ${enc.id}`,
+        group: 'View' as Group,
+        when: () => this.doc.loaded && this.doc.encoding !== enc.id && (enc.kind !== 'multi' || this.canReinterpret),
+        run: () => this.setEncoding(enc.id),
       })),
       { id: 'view.mono', title: () => (this.grid.mono ? 'Use proportional cell font' : 'Use monospace cell font'), group: 'View', run: () => this.toggleMono() },
       { id: 'view.zoomIn', title: 'Zoom in', group: 'View', shortcut: 'Ctrl+=', global: true, run: () => this.setZoom(this.grid.zoom + 0.1) },

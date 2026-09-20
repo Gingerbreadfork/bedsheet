@@ -417,6 +417,24 @@ export class Doc {
     );
   }
 
+  /** Changes the encoding the file will be saved in. */
+  setEncoding(encoding: string): void {
+    const prev = this.encoding;
+    if (prev === encoding) return;
+    this.exec(
+      {
+        label: 'Change encoding',
+        redo: () => {
+          this.encoding = encoding;
+        },
+        undo: () => {
+          this.encoding = prev;
+        },
+      },
+      'cell',
+    );
+  }
+
   setHasHeader(value: boolean): void {
     if (value === this.hasHeader) return;
     const width = this.columns.length;
