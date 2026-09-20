@@ -32,11 +32,12 @@ export function parseShortcut(combo: string): Shortcut {
 }
 
 export function eventMatches(e: KeyboardEvent, s: Shortcut): boolean {
-  if (e.ctrlKey !== s.ctrl || e.shiftKey !== s.shift || e.altKey !== s.alt) return false;
+  if (e.ctrlKey !== s.ctrl || e.altKey !== s.alt) return false;
   const key = e.key.toLowerCase();
+  if (s.key === '=' && (key === '+' || key === '=' || e.code === 'Equal')) return true;
+  if (e.shiftKey !== s.shift) return false;
   if (key === s.key) return true;
-  if (s.key === '=' && (key === '+' || e.code === 'Equal')) return true;
-  if (s.key === '-' && (key === '_' || e.code === 'Minus')) return true;
+  if (s.key === '-' && e.code === 'Minus') return true;
   return false;
 }
 
