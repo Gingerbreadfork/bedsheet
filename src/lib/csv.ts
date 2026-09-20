@@ -208,28 +208,6 @@ export function serializeCsv(
   return lines.join(lineEnding) + lineEnding;
 }
 
-export interface Decoded {
-  text: string;
-  encoding: string;
-}
-
-export function decodeBytes(bytes: Uint8Array): Decoded {
-  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
-    return { text: new TextDecoder('utf-8').decode(bytes.subarray(3)), encoding: 'UTF-8 with BOM' };
-  }
-  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
-    return { text: new TextDecoder('utf-16le').decode(bytes.subarray(2)), encoding: 'UTF-16 LE' };
-  }
-  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
-    return { text: new TextDecoder('utf-16be').decode(bytes.subarray(2)), encoding: 'UTF-16 BE' };
-  }
-  try {
-    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), encoding: 'UTF-8' };
-  } catch {
-    return { text: new TextDecoder('windows-1252').decode(bytes), encoding: 'Windows-1252' };
-  }
-}
-
 /** Parses tab-separated clipboard text into a block; falls back to lines, then a single value. */
 export function parseClipboardBlock(text: string): string[][] {
   const trimmed = text.replace(/(\r\n|\n|\r)$/, '');

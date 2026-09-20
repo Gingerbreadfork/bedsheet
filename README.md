@@ -30,8 +30,8 @@ keep open.
 ## What it does
 
 **Reads anything delimited.** CSV, TSV, semicolons, pipes. The delimiter, line endings, and
-encoding are detected on open (UTF-8 with or without BOM, UTF-16, and a Windows-1252
-fallback). Files with short rows are padded and you're told about it.
+encoding are detected on open (UTF-8 with or without BOM, UTF-16 with or without one, and a
+Windows-1252 fallback). Files with short rows are padded and you're told about it.
 
 **Stays fast.** The grid only renders what's on screen, in both directions. A 200,000-row,
 14 MB file parses in about 200 ms and searches across 1.6 million cells in about 70 ms.
@@ -167,14 +167,16 @@ This is the part spreadsheet apps get wrong, so it's the part bedsheet is strict
   whatever string they were. Alignment and number detection are display-only.
 - **The delimiter is preserved.** A semicolon file saves as a semicolon file.
 - **Line endings are preserved.** CRLF in, CRLF out.
+- **The encoding is preserved.** UTF-16 stays UTF-16, Windows-1252 stays Windows-1252, and a
+  UTF-8 byte order mark is kept if the file had one. If you type a character the encoding
+  can't hold, the file is saved as UTF-8 instead and you're told.
 - **Quoting follows RFC 4180 and only where needed.** Fields containing the delimiter,
   quotes, line breaks, or leading and trailing spaces are quoted. Nothing else is.
 - **Writes are atomic.** The file is written to a temporary sibling and renamed into place,
   so a crash mid-save can't leave you with half a file.
 
-Two things do change, and you'll know when they do: rows shorter than the widest row are
-padded with empty cells (you're told on open), and files in UTF-16 or Windows-1252 are
-saved as UTF-8.
+One thing does change, and you're told on open when it does: rows shorter than the widest
+row are padded with empty cells.
 
 ## Design
 

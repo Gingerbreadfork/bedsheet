@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCsv, serializeCsv, detectDelimiter, decodeBytes, parseClipboardBlock, columnLetter } from './csv';
+import { parseCsv, serializeCsv, detectDelimiter, parseClipboardBlock, columnLetter } from './csv';
 
 describe('parseCsv', () => {
   it('parses simple rows', () => {
@@ -65,17 +65,6 @@ describe('detectDelimiter', () => {
   });
   it('prefers tab for .tsv files', () => {
     expect(detectDelimiter('a,b', 'x.tsv')).toBe('\t');
-  });
-});
-
-describe('decodeBytes', () => {
-  it('decodes UTF-8 with BOM', () => {
-    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 0x68, 0x69]);
-    expect(decodeBytes(bytes)).toEqual({ text: 'hi', encoding: 'UTF-8 with BOM' });
-  });
-  it('falls back to windows-1252 for invalid UTF-8', () => {
-    const bytes = new Uint8Array([0x63, 0x61, 0x66, 0xe9]);
-    expect(decodeBytes(bytes)).toEqual({ text: 'café', encoding: 'Windows-1252' });
   });
 });
 

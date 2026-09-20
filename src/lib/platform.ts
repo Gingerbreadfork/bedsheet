@@ -52,8 +52,7 @@ export async function pickFile(): Promise<OpenedFile | null> {
   });
 }
 
-export async function writePath(path: string, text: string): Promise<SavedFile> {
-  const bytes = new TextEncoder().encode(text);
+export async function writePath(path: string, bytes: Uint8Array): Promise<SavedFile> {
   await invoke('write_file', bytes, { headers: { 'x-path': encodeURIComponent(path) } });
   return { name: baseName(path), path };
 }
@@ -66,9 +65,10 @@ export async function pickSavePath(defaultName: string, currentPath: string | nu
   return chosen ?? null;
 }
 
-async function browserSave(defaultName: string, text: string): Promise<SavedFile | null> {
+async function browserSave(defaultName: string, bytes: Uint8Array): Promise<SavedFile | null> {
+  const data = new Blob([bytes as BlobPart], { type: 'text/csv' });
   const w = window as unknown as {
-    showSaveFilePicker?: (o: unknown) => Promise<{ createWritable(): Promise<{ write(d: string): Promise<void>; close(): Promise<void> }>; name: string }>;
+    showSaveFilePicker?: (o: unknown) => Promise<{ createWritable(): Promise<{ write(d: Blob): Promise<void>; close(): Promise<void> }>; name: string }>;
   };
   if (w.showSaveFilePicker) {
     try {
@@ -77,7 +77,7 @@ async function browserSave(defaultName: string, text: string): Promise<SavedFile
         types: [{ description: 'CSV', accept: { 'text/csv': ['.csv', '.tsv', '.txt'] } }],
       });
       const writable = await handle.createWritable();
-      await writable.write(text);
+      await writable.write(data);
       await writable.close();
       return { name: handle.name, path: null };
     } catch (e) {
@@ -85,7 +85,7 @@ async function browserSave(defaultName: string, text: string): Promise<SavedFile
       throw e;
     }
   }
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  const url = URL.createObjectURL(data);
   const a = document.createElement('a');
   a.href = url;
   a.download = defaultName;
@@ -95,14 +95,14 @@ async function browserSave(defaultName: string, text: string): Promise<SavedFile
 }
 
 /** Saves to `path` if given, otherwise prompts. Returns null when cancelled. */
-export async function saveText(text: string, defaultName: string, path: string | null, forcePrompt: boolean): Promise<SavedFile | null> {
-  if (!isTauri) return browserSave(defaultName, text);
+export async function saveBytes(bytes: Uint8Array, defaultName: string, path: string | null, forcePrompt: boolean): Promise<SavedFile | null> {
+  if (!isTauri) return browserSave(defaultName, bytes);
   let target = path;
   if (!target || forcePrompt) {
     target = await pickSavePath(defaultName, path);
     if (!target) return null;
   }
-  return writePath(target, text);
+  return writePath(target, bytes);
 }
 
 export async function launchFiles(): Promise<string[]> {

@@ -1,13 +1,14 @@
 import { Doc } from './document.svelte';
 import { GridState, cellKey, DEFAULT_COL_WIDTH, type Pos } from './grid.svelte';
-import { decodeBytes, serializeCsv, parseClipboardBlock, DELIMITERS, delimiterLabel } from './csv';
+import { serializeCsv, parseClipboardBlock, DELIMITERS, delimiterLabel } from './csv';
+import { decodeBytes, encodeText, ENCODINGS } from './encoding';
 import { parseShortcut, eventMatches, isEditableTarget, type Shortcut } from './keys';
 import type { CellEdit } from './document.svelte';
 import {
   isTauri,
   pickFile,
   readPath,
-  saveText,
+  saveBytes,
   launchFiles,
   clipboard,
   win,
@@ -285,11 +286,21 @@ export class AppState {
     const name = /\.[a-z0-9]{1,5}$/i.test(this.doc.name) ? this.doc.name : `${this.doc.name}.csv`;
     try {
       const savePoint = this.doc.savePoint();
-      const result = await saveText(this.doc.toText(), name, this.doc.path, forcePrompt);
+      const text = this.doc.toText();
+      const wanted = this.doc.encoding;
+      const bytes = encodeText(text, wanted);
+      const result = await saveBytes(bytes ?? encodeText(text, 'UTF-8')!, name, this.doc.path, forcePrompt);
       if (!result) return false;
       this.doc.markSaved(result.path, result.name, savePoint);
       if (result.path) this.recent = pushRecent(result.path, result.name);
-      this.toast(`Saved ${result.name}`, 'success');
+      if (bytes) {
+        this.toast(`Saved ${result.name}`, 'success');
+      } else {
+        this.doc.encoding = 'UTF-8';
+        const multi = ENCODINGS.find((e) => e.id === wanted)?.kind === 'multi';
+        const why = multi ? `bedsheet can’t write ${wanted}` : `${wanted} can’t hold every character in it`;
+        this.toast(`Saved ${result.name} as UTF-8 because ${why}`, 'info', 6000);
+      }
       return true;
     } catch (e) {
       this.toast(`Couldn’t save: ${String(e)}`, 'error', 4000);
