@@ -301,11 +301,7 @@
         drag = { kind: 'cells' };
         break;
       case 'addRow':
-        app.insertRows(rowCount === 0 ? 'below' : 'below');
-        grid.select(rowCount - 1, grid.anchor.c);
-        if (rowCount > 0) {
-          grid.select(rowCount - 1, grid.anchor.c);
-        }
+        addRowAtEnd();
         break;
       case 'addCol':
         grid.select(grid.anchor.r, colCount - 1, false);
@@ -315,6 +311,11 @@
     if (drag) viewport.setPointerCapture(e.pointerId);
     viewport.focus({ preventScroll: true });
     e.preventDefault();
+  }
+
+  function addRowAtEnd(): void {
+    if (rowCount > 0) grid.select(rowCount - 1, grid.anchor.c, false);
+    app.insertRows('below');
   }
 
   function onPointerMove(e: PointerEvent): void {
@@ -520,7 +521,7 @@
       case ' ':
         if (shift) grid.selectRows(range.r0, range.r1);
         else if (ctrl) grid.selectCols(range.c0, range.c1);
-        else handled = false;
+        else grid.startEdit('replace', ' ');
         break;
       case 'Escape':
         if (app.closeOverlays()) break;
@@ -717,10 +718,7 @@
       style:width="{gutterW + totalW}px"
       tabindex="-1"
       onpointerdown={(e) => e.stopPropagation()}
-      onclick={() => {
-        if (rowCount > 0) grid.select(rowCount - 1, grid.anchor.c, false);
-        app.insertRows('below');
-      }}
+      onclick={addRowAtEnd}
     >
       <span class="addrow-gutter"><Icon name="plus" size={14} /></span>
       <span class="addrow-label">Add row</span>
