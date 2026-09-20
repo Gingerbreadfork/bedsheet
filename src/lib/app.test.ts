@@ -57,3 +57,41 @@ describe('stepping through matches', () => {
     expect(app.grid.viewRows).toEqual([0, 1]);
   });
 });
+
+describe('a filter that matches nothing', () => {
+  function filterToNothing(): void {
+    load('h\nalpha\nbeta\n');
+    find('alpha');
+    app.toggleFilterRows();
+    find('zzz');
+  }
+
+  it('leaves hidden rows alone', () => {
+    filterToNothing();
+    expect(app.grid.rowCount).toBe(0);
+    app.clearSelection();
+    app.deleteRows();
+    app.fillDown();
+    expect(app.selectionText()).toBe('');
+    expect(column()).toEqual(['alpha', 'beta']);
+  });
+
+  it('adds new rows at the end and shows them', () => {
+    filterToNothing();
+    app.insertRows('below');
+    expect(column()).toEqual(['alpha', 'beta', '']);
+    expect(app.grid.viewRows).toEqual([2]);
+  });
+});
+
+describe('opening something else', () => {
+  it('starts a new sheet unfiltered', async () => {
+    load('h\nalpha\nbeta\n');
+    find('alpha');
+    app.toggleFilterRows();
+    app.doc.markSaved('/tmp/t.csv', 't.csv');
+    await app.newSheet();
+    expect(app.query).toBe('');
+    expect(app.grid.rowCount).toBe(30);
+  });
+});

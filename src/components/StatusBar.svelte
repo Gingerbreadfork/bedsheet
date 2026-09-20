@@ -64,7 +64,15 @@
 <footer class="status">
   <div class="left">
     {#if doc.loaded}
-      <span class="stat">{rowsText}</span>
+      {#if grid.viewRows}
+        <button class="chip filter" title="Show all rows" onclick={() => app.toggleFilterRows()}>
+          <Icon name="filter" size={12} />
+          {rowsText}
+          <Icon name="close" size={11} />
+        </button>
+      {:else}
+        <span class="stat">{rowsText}</span>
+      {/if}
       <span class="dot"></span>
       <span class="stat">{colsText}</span>
       {#if selection.text}
@@ -202,6 +210,11 @@
   }
   .chip.on {
     color: var(--ink);
+  }
+  .chip.filter {
+    margin-left: -8px;
+    color: var(--accent);
+    background: var(--accent-soft);
   }
   .chip kbd {
     height: 16px;

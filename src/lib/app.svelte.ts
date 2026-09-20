@@ -232,6 +232,7 @@ export class AppState {
     await nextFrame();
     try {
       const { text, encoding } = decodeBytes(file.bytes);
+      this.resetFind();
       this.doc.loadText(text, { name: file.name, path: file.path, encoding });
       this.grid.widths = [];
       this.grid.editing = null;
@@ -249,6 +250,7 @@ export class AppState {
   async newSheet(): Promise<void> {
     if (!(await this.confirmDiscard())) return;
     this.commitEdit?.();
+    this.resetFind();
     this.doc.newSheet();
     this.grid.widths = [];
     this.grid.editing = null;
@@ -278,9 +280,7 @@ export class AppState {
     if (!(await this.confirmDiscard())) return;
     this.commitEdit?.();
     this.doc.close();
-    this.query = '';
-    this.filterRows = false;
-    this.runSearch(false);
+    this.clearFind();
   }
 
   async quit(): Promise<void> {
@@ -314,10 +314,16 @@ export class AppState {
     if (label) this.toast(`Redid: ${label}`);
   }
 
+  /** False when there is nothing to select: no file, no rows, or a filter that matches none. */
+  get hasCells(): boolean {
+    return this.doc.loaded && this.grid.rowCount > 0 && this.grid.colCount > 0;
+  }
+
   /** Iterates the selection in data coordinates. */
   private selectionEdits(value: (r: number, c: number) => string): CellEdit[] {
-    const { r0, c0, r1, c1 } = this.grid.range;
     const edits: CellEdit[] = [];
+    if (!this.hasCells) return edits;
+    const { r0, c0, r1, c1 } = this.grid.range;
     for (let vr = r0; vr <= r1; vr++) {
       const r = this.grid.dataRow(vr);
       for (let c = c0; c <= c1; c++) edits.push({ r, c, value: value(r, c) });
@@ -326,6 +332,7 @@ export class AppState {
   }
 
   selectionText(): string {
+    if (!this.hasCells) return '';
     const { r0, c0, r1, c1 } = this.grid.range;
     const rows: string[][] = [];
     for (let vr = r0; vr <= r1; vr++) {
@@ -337,14 +344,14 @@ export class AppState {
   }
 
   async copy(): Promise<void> {
-    if (!this.doc.loaded) return;
+    if (!this.hasCells) return;
     this.commitEdit?.();
     await clipboard.writeText(this.selectionText());
     this.toastCells('Copied');
   }
 
   async cut(): Promise<void> {
-    if (!this.doc.loaded) return;
+    if (!this.hasCells) return;
     this.commitEdit?.();
     await clipboard.writeText(this.selectionText());
     this.doc.setCells(this.selectionEdits(() => ''), 'Cut');
@@ -395,7 +402,7 @@ export class AppState {
 
   fillDown(): void {
     const { r0, c0, r1, c1 } = this.grid.range;
-    if (r1 === r0) return;
+    if (!this.hasCells || r1 === r0) return;
     const top: Record<number, string> = {};
     for (let c = c0; c <= c1; c++) top[c] = this.doc.cell(this.grid.dataRow(r0), c);
     this.doc.setCells(
@@ -418,8 +425,8 @@ export class AppState {
     const g = this.grid;
     const { r0, r1 } = g.range;
     const count = r1 - r0 + 1;
-    const empty = this.doc.rowCount === 0;
-    const at = empty ? 0 : where === 'above' ? g.dataRow(r0) : g.dataRow(r1) + 1;
+    const empty = g.rowCount === 0;
+    const at = empty ? this.doc.rowCount : where === 'above' ? g.dataRow(r0) : g.dataRow(r1) + 1;
     const viewAt = empty ? 0 : where === 'above' ? r0 : r1 + 1;
     this.withPreservedView(() => {
       this.doc.insertRows(at, empty ? 1 : count);
@@ -435,7 +442,7 @@ export class AppState {
   }
 
   deleteRows(): void {
-    if (!this.doc.loaded || this.doc.rowCount === 0) return;
+    if (!this.hasCells) return;
     this.commitEdit?.();
     const g = this.grid;
     const indices = g.selectedRowIndices;
@@ -616,9 +623,15 @@ export class AppState {
   }
 
   clearFind(): void {
+    this.resetFind();
+    this.runSearch(false);
+  }
+
+  /** Drops the query and filter; the search itself reruns when the next document loads. */
+  private resetFind(): void {
     this.query = '';
     this.filterRows = false;
-    this.runSearch(false);
+    this.grid.matchIndex = -1;
   }
 
   stepMatch(dir: 1 | -1): void {
@@ -738,7 +751,7 @@ export class AppState {
 
   private buildCommands(): CommandDef[] {
     const loaded = () => this.doc.loaded;
-    const hasRows = () => this.doc.loaded && this.doc.rowCount > 0;
+    const hasRows = () => this.hasCells;
     return [
       { id: 'file.new', title: 'New sheet', group: 'File', shortcut: 'Ctrl+N', global: true, run: () => this.newSheet() },
       { id: 'file.open', title: 'Open file…', group: 'File', shortcut: 'Ctrl+O', global: true, run: () => this.open() },

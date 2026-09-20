@@ -55,8 +55,9 @@ export class GridState {
     return this.doc.colCount;
   }
 
+  /** The document row shown at `viewRow`, or -1 when a filter leaves nothing there. */
   dataRow(viewRow: number): number {
-    return this.viewRows ? (this.viewRows[viewRow] ?? viewRow) : viewRow;
+    return this.viewRows ? (this.viewRows[viewRow] ?? -1) : viewRow;
   }
 
   viewRow(dataRow: number): number {
@@ -95,7 +96,10 @@ export class GridState {
   get selectedRowIndices(): number[] {
     const { r0, r1 } = this.range;
     const out: number[] = [];
-    for (let r = r0; r <= r1; r++) out.push(this.dataRow(r));
+    for (let r = r0; r <= r1; r++) {
+      const d = this.dataRow(r);
+      if (d >= 0) out.push(d);
+    }
     return out;
   }
 
