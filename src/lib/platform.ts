@@ -138,6 +138,43 @@ export async function launchFiles(): Promise<string[]> {
   }
 }
 
+/** Unsaved work written aside so it can be offered back after a crash. */
+export interface RecoverySnapshot {
+  name: string;
+  path: string | null;
+  encoding: string;
+  delimiter: string;
+  hasHeader: boolean;
+  savedAt: number;
+  text: string;
+}
+
+export const recovery = {
+  async save(id: string, snapshot: RecoverySnapshot): Promise<void> {
+    if (!isTauri) return;
+    const body = new TextEncoder().encode(JSON.stringify(snapshot));
+    await invoke('recovery_save', body, { headers: { 'x-id': id } });
+  },
+  async clear(id: string): Promise<void> {
+    if (!isTauri) return;
+    await invoke('recovery_clear', { id });
+  },
+  /** Snapshots left behind by instances that are no longer running. */
+  async pending(): Promise<{ id: string; snapshot: RecoverySnapshot }[]> {
+    if (!isTauri) return [];
+    const entries = await invoke<{ id: string; data: string }[]>('recovery_pending');
+    const out: { id: string; snapshot: RecoverySnapshot }[] = [];
+    for (const { id, data } of entries) {
+      try {
+        out.push({ id, snapshot: JSON.parse(data) as RecoverySnapshot });
+      } catch {
+        void this.clear(id);
+      }
+    }
+    return out;
+  },
+};
+
 export function onFileDrop(handler: (paths: string[]) => void, onHover: (hovering: boolean) => void): () => void {
   if (!isTauri) return () => {};
   let unlisten: (() => void) | null = null;

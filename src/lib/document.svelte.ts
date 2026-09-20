@@ -25,6 +25,8 @@ export interface LoadMeta {
   path: string | null;
   encoding: string;
   delimiter?: string;
+  /** Overrides header detection. */
+  hasHeader?: boolean;
 }
 
 const MAX_UNDO = 500;
@@ -126,7 +128,7 @@ export class Doc {
     this.ragged = parsed.ragged;
     this.name = meta.name;
     this.path = meta.path;
-    if (parsed.rows.length > 0 && looksLikeHeader(parsed.rows)) {
+    if (parsed.rows.length > 0 && (meta.hasHeader ?? looksLikeHeader(parsed.rows))) {
       this.columns = parsed.rows[0];
       this.rows = parsed.rows.slice(1);
       this.hasHeader = true;
@@ -160,6 +162,13 @@ export class Doc {
   toText(): string {
     const all = this.hasHeader ? [this.columns, ...this.rows] : this.rows;
     return serializeCsv(all, this.delimiter, this.lineEnding, { quoting: this.quoting, finalNewline: this.finalNewline });
+  }
+
+  /** Marks freshly loaded contents as not matching what is on disk. */
+  markUnsaved(): void {
+    this.cleanTop = UNREACHABLE;
+    this.sourceText = null;
+    this.dirty = true;
   }
 
   /** The current undo position, to pass to `markSaved` once a write started now has finished. */

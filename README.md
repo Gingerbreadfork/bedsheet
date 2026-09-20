@@ -190,6 +190,9 @@ This is the part spreadsheet apps get wrong, so it's the part Bedsheet is strict
   gets no extra quotes.
 - **Other programs' changes aren't trampled.** If the file changes on disk while it's open,
   Bedsheet offers to reload it, and asks before saving over it.
+- **Unsaved work survives a crash.** Edits are set aside a few seconds after you stop typing.
+  If Bedsheet or the machine goes down, the next launch offers them back. Saving, closing, or
+  choosing not to save clears them.
 - **Writes are atomic.** The file is written to a temporary sibling and renamed into place,
   so a crash mid-save can't leave you with half a file.
 

@@ -197,3 +197,18 @@ describe('large row operations', () => {
     expect(d.cell(149_999, 0)).toBe('149999');
   });
 });
+
+describe('recovered contents', () => {
+  it('load as unsaved, keeping the header choice that was in effect', () => {
+    const d = new Doc();
+    d.loadText('1,2\n3,4\n', { name: 't.csv', path: '/tmp/t.csv', encoding: 'UTF-8', hasHeader: true });
+    expect(d.columns).toEqual(['1', '2']);
+    d.markUnsaved();
+    expect(d.dirty).toBe(true);
+    d.setCell(0, 0, 'x');
+    d.undo();
+    expect(d.dirty).toBe(true);
+    d.markSaved('/tmp/t.csv', 't.csv');
+    expect(d.dirty).toBe(false);
+  });
+});

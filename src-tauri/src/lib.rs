@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use percent_encoding::percent_decode_str;
 use serde::Serialize;
 use tauri::ipc::{InvokeBody, Request, Response};
+use tauri::Manager;
 
 #[derive(Serialize)]
 struct FileInfo {
@@ -129,6 +130,103 @@ fn write_file(request: Request<'_>) -> Result<FileInfo, String> {
     info_for(&path)
 }
 
+#[derive(Serialize)]
+struct RecoveryEntry {
+    id: String,
+    data: String,
+}
+
+fn recovery_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("recovery");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// Snapshots are named `<pid>-<id>.json` so a later launch can tell whether their owner is still running.
+fn recovery_file(dir: &Path, pid: u32, id: &str) -> Result<PathBuf, String> {
+    if id.is_empty() || !id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        return Err("invalid recovery id".into());
+    }
+    Ok(dir.join(format!("{pid}-{id}.json")))
+}
+
+fn process_is_running(pid: u32) -> bool {
+    !cfg!(target_os = "linux") || Path::new(&format!("/proc/{pid}")).exists()
+}
+
+/// Takes over the snapshots left by instances that are no longer running and returns them.
+fn claim_recovery_files(dir: &Path, own_pid: u32) -> Vec<RecoveryEntry> {
+    let mut found = Vec::new();
+    let Ok(entries) = fs::read_dir(dir) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some((pid, id)) = name
+            .strip_suffix(".json")
+            .and_then(|stem| stem.split_once('-'))
+        else {
+            continue;
+        };
+        let Ok(pid) = pid.parse::<u32>() else {
+            continue;
+        };
+        if pid == own_pid || process_is_running(pid) {
+            continue;
+        }
+        let Ok(claimed) = recovery_file(dir, own_pid, id) else {
+            continue;
+        };
+        if fs::rename(entry.path(), &claimed).is_err() {
+            continue;
+        }
+        if let Ok(data) = fs::read_to_string(&claimed) {
+            found.push(RecoveryEntry {
+                id: id.to_string(),
+                data,
+            });
+        }
+    }
+    found
+}
+
+/// Stores the raw request body as the snapshot named by the `x-id` header.
+#[tauri::command(async)]
+fn recovery_save(app: tauri::AppHandle, request: Request<'_>) -> Result<(), String> {
+    let id = request
+        .headers()
+        .get("x-id")
+        .and_then(|v| v.to_str().ok())
+        .ok_or("missing x-id header")?;
+    let bytes: &[u8] = match request.body() {
+        InvokeBody::Raw(b) => b,
+        InvokeBody::Json(_) => return Err("expected raw body".into()),
+    };
+    let file = recovery_file(&recovery_dir(&app)?, std::process::id(), id)?;
+    write_atomic(&file, bytes).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+fn recovery_clear(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let file = recovery_file(&recovery_dir(&app)?, std::process::id(), &id)?;
+    match fs::remove_file(file) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e.to_string()),
+        _ => Ok(()),
+    }
+}
+
+#[tauri::command(async)]
+fn recovery_pending(app: tauri::AppHandle) -> Result<Vec<RecoveryEntry>, String> {
+    Ok(claim_recovery_files(
+        &recovery_dir(&app)?,
+        std::process::id(),
+    ))
+}
+
 /// File paths passed on the command line, resolved to absolute paths.
 fn launch_paths() -> Vec<PathBuf> {
     std::env::args_os()
@@ -171,7 +269,10 @@ pub fn run() {
             read_file,
             write_file,
             file_info,
-            launch_files
+            launch_files,
+            recovery_save,
+            recovery_clear,
+            recovery_pending
         ])
         .run(tauri::generate_context!())
         .expect("error while running bedsheet");
@@ -200,6 +301,37 @@ mod tests {
                     .ends_with(".tmp")
             })
             .count()
+    }
+
+    #[test]
+    fn claims_snapshots_whose_owner_has_exited() {
+        let dir = scratch("recovery");
+        let own = std::process::id();
+        let dead = 4_000_000;
+        fs::write(
+            recovery_file(&dir, dead, "abc123").unwrap(),
+            "{\"name\":\"a.csv\"}",
+        )
+        .unwrap();
+        fs::write(recovery_file(&dir, own, "mine").unwrap(), "{}").unwrap();
+        fs::write(recovery_file(&dir, 1, "init").unwrap(), "{}").unwrap();
+        fs::write(dir.join("notes.txt"), "unrelated").unwrap();
+
+        let found = claim_recovery_files(&dir, own);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].id, "abc123");
+        assert_eq!(found[0].data, "{\"name\":\"a.csv\"}");
+        assert!(recovery_file(&dir, own, "abc123").unwrap().exists());
+        assert!(!recovery_file(&dir, dead, "abc123").unwrap().exists());
+        assert!(claim_recovery_files(&dir, own).is_empty());
+    }
+
+    #[test]
+    fn rejects_recovery_ids_that_could_escape_the_directory() {
+        let dir = scratch("recovery-id");
+        assert!(recovery_file(&dir, 1, "../evil").is_err());
+        assert!(recovery_file(&dir, 1, "").is_err());
+        assert!(recovery_file(&dir, 1, "ok42").is_ok());
     }
 
     #[test]

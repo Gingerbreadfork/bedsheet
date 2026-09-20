@@ -19,6 +19,7 @@ import {
   saveSetting,
   fileStamp,
   sameStamp,
+  recovery,
   type FileStamp,
   type OpenedFile,
   type RecentEntry,
@@ -97,6 +98,7 @@ export interface Toast {
 }
 
 const LARGE_FILE_BYTES = 256 * 1024 * 1024;
+const RECOVERY_IDLE_MS = 5000;
 
 function formatSize(bytes: number): string {
   const mb = bytes / (1024 * 1024);
@@ -157,6 +159,8 @@ export class AppState {
   private sourceBytes: Uint8Array | null = null;
   private diskStamp: FileStamp | null = null;
   private noticedStamp: FileStamp | null = null;
+  private recoveryId = Math.random().toString(36).slice(2, 12);
+  private recoveryTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
     this.grid.mono = loadSetting('mono', false);
@@ -187,6 +191,7 @@ export class AppState {
       if (change.restored) queueMicrotask(() => this.autoFit?.(change.at));
     });
     this.doc.onChange((kind) => {
+      if (kind !== 'load') this.scheduleRecovery();
       this.grid.ensureValid();
       if (kind !== 'cell') {
         this.scope = null;
@@ -214,6 +219,74 @@ export class AppState {
   async init(): Promise<void> {
     const files = await launchFiles();
     if (files.length > 0) await this.openPath(files[0]);
+    await this.offerRecovery();
+  }
+
+  // ---------- crash recovery ----------
+
+  /** Writes unsaved work aside once editing pauses. */
+  private scheduleRecovery(): void {
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = setTimeout(() => void this.writeRecovery(), RECOVERY_IDLE_MS);
+  }
+
+  private async writeRecovery(): Promise<void> {
+    const { doc } = this;
+    try {
+      if (!doc.loaded || !doc.dirty) return await recovery.clear(this.recoveryId);
+      await recovery.save(this.recoveryId, {
+        name: doc.name,
+        path: doc.path,
+        encoding: doc.encoding,
+        delimiter: doc.delimiter,
+        hasHeader: doc.hasHeader,
+        savedAt: Date.now(),
+        text: doc.toText(),
+      });
+    } catch {
+      /* recovery is best effort */
+    }
+  }
+
+  async clearRecovery(): Promise<void> {
+    clearTimeout(this.recoveryTimer);
+    try {
+      await recovery.clear(this.recoveryId);
+    } catch {
+      /* nothing to clear */
+    }
+  }
+
+  /** Offers back work from a previous run that ended without saving or discarding it. */
+  private async offerRecovery(): Promise<void> {
+    let pending: Awaited<ReturnType<typeof recovery.pending>> = [];
+    try {
+      pending = await recovery.pending();
+    } catch {
+      return;
+    }
+    for (const { id, snapshot } of pending) {
+      if (this.doc.dirty) return;
+      const when = new Date(snapshot.savedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      const recover = await this.choose(`Recover unsaved changes to ${snapshot.name}?`, `Bedsheet closed on ${when} before these edits were saved.`, [
+        { label: 'Discard', value: false },
+        { label: 'Recover', kind: 'primary', value: true },
+      ]);
+      if (!recover) {
+        await recovery.clear(id).catch(() => {});
+        continue;
+      }
+      this.resetFind();
+      this.sourceBytes = null;
+      this.recoveryId = id;
+      const { name, path, encoding, delimiter, hasHeader, text } = snapshot;
+      this.doc.loadText(text, { name, path, encoding, delimiter, hasHeader });
+      this.doc.markUnsaved();
+      this.diskStamp = this.noticedStamp = path ? await fileStamp(path) : null;
+      this.grid.widths = [];
+      this.grid.select(0, 0, false);
+      this.grid.focusGrid?.();
+    }
   }
 
   // ---------- toasts, dialogs, menus ----------
@@ -342,6 +415,7 @@ export class AppState {
       this.doc.loadText(text, { name: file.name, path: file.path, encoding });
       this.sourceBytes = file.bytes;
       this.diskStamp = this.noticedStamp = file.stamp ?? null;
+      void this.clearRecovery();
       this.grid.widths = [];
       this.grid.editing = null;
       this.grid.select(0, 0, false);
@@ -364,6 +438,7 @@ export class AppState {
     this.resetFind();
     this.sourceBytes = null;
     this.diskStamp = this.noticedStamp = null;
+    void this.clearRecovery();
     this.doc.newSheet();
     this.grid.widths = [];
     this.grid.editing = null;
@@ -386,6 +461,8 @@ export class AppState {
       this.sourceBytes = null;
       this.diskStamp = this.noticedStamp = result.stamp ?? null;
       this.doc.markSaved(result.path, result.name, savePoint);
+      if (this.doc.dirty) this.scheduleRecovery();
+      else void this.clearRecovery();
       if (result.path) this.recent = pushRecent(result.path, result.name);
       if (bytes) {
         this.toast(`Saved ${result.name}`, 'success');
@@ -437,12 +514,14 @@ export class AppState {
     if (!(await this.confirmDiscard())) return;
     this.commitPending();
     this.sourceBytes = null;
+    void this.clearRecovery();
     this.doc.close();
     this.clearFind();
   }
 
   async quit(): Promise<void> {
     if (!(await this.confirmDiscard())) return;
+    await this.clearRecovery();
     if (isTauri) await win.destroy();
   }
 
