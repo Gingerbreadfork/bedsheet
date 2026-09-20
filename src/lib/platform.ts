@@ -7,15 +7,38 @@ import { readText as clipRead, writeText as clipWrite } from '@tauri-apps/plugin
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+/** Size and modification time, used to notice when a file changes behind the app's back. */
+export interface FileStamp {
+  size: number;
+  modified: number | null;
+}
+
 export interface OpenedFile {
   name: string;
   path: string | null;
   bytes: Uint8Array;
+  stamp?: FileStamp | null;
 }
 
 export interface SavedFile {
   name: string;
   path: string | null;
+  stamp?: FileStamp | null;
+}
+
+/** Null when the file doesn't exist or there is no file system to ask. */
+export async function fileStamp(path: string): Promise<FileStamp | null> {
+  if (!isTauri) return null;
+  try {
+    const { size, modified } = await invoke<FileStamp>('file_info', { path });
+    return { size, modified };
+  } catch {
+    return null;
+  }
+}
+
+export function sameStamp(a: FileStamp | null, b: FileStamp | null): boolean {
+  return a === b || (a !== null && b !== null && a.size === b.size && a.modified === b.modified);
 }
 
 const FILTERS = [
@@ -28,8 +51,9 @@ function baseName(path: string): string {
 }
 
 export async function readPath(path: string): Promise<OpenedFile> {
+  const stamp = await fileStamp(path);
   const buf = await invoke<ArrayBuffer>('read_file', { path });
-  return { name: baseName(path), path, bytes: new Uint8Array(buf) };
+  return { name: baseName(path), path, bytes: new Uint8Array(buf), stamp };
 }
 
 export async function pickFile(): Promise<OpenedFile | null> {
@@ -53,8 +77,8 @@ export async function pickFile(): Promise<OpenedFile | null> {
 }
 
 export async function writePath(path: string, bytes: Uint8Array): Promise<SavedFile> {
-  await invoke('write_file', bytes, { headers: { 'x-path': encodeURIComponent(path) } });
-  return { name: baseName(path), path };
+  const { size, modified } = await invoke<FileStamp>('write_file', bytes, { headers: { 'x-path': encodeURIComponent(path) } });
+  return { name: baseName(path), path, stamp: { size, modified } };
 }
 
 export async function pickSavePath(defaultName: string, currentPath: string | null): Promise<string | null> {

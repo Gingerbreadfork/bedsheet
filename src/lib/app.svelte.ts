@@ -17,6 +17,9 @@ import {
   removeRecent,
   loadSetting,
   saveSetting,
+  fileStamp,
+  sameStamp,
+  type FileStamp,
   type OpenedFile,
   type RecentEntry,
 } from './platform';
@@ -75,6 +78,13 @@ export interface Toast {
   kind: 'info' | 'success' | 'error';
 }
 
+const LARGE_FILE_BYTES = 256 * 1024 * 1024;
+
+function formatSize(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+}
+
 const nextFrame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 let toastId = 0;
 const sameText = (a: string, b: string): boolean => a.replaceAll('\r\n', '\n') === b.replaceAll('\r\n', '\n');
@@ -114,6 +124,8 @@ export class AppState {
   private preserveView = false;
   private copied: { text: string; block: string[][] } | null = null;
   private sourceBytes: Uint8Array | null = null;
+  private diskStamp: FileStamp | null = null;
+  private noticedStamp: FileStamp | null = null;
 
   constructor() {
     this.grid.mono = loadSetting('mono', false);
@@ -204,6 +216,24 @@ export class AppState {
     return closed;
   }
 
+  /** Shows a dialog and resolves with the value of the button that was chosen. */
+  private choose<T>(title: string, message: string, options: { label: string; kind?: DialogAction['kind']; value: T }[]): Promise<T> {
+    return new Promise((resolve) => {
+      this.dialog = {
+        title,
+        message,
+        actions: options.map((o) => ({
+          label: o.label,
+          kind: o.kind,
+          run: () => {
+            this.dialog = null;
+            resolve(o.value);
+          },
+        })),
+      };
+    });
+  }
+
   confirmDiscard(): Promise<boolean> {
     if (!this.doc.dirty) return Promise.resolve(true);
     return new Promise((resolve) => {
@@ -240,6 +270,18 @@ export class AppState {
 
   async openPath(path: string, confirm = true): Promise<void> {
     if (confirm && !(await this.confirmDiscard())) return;
+    const size = (await fileStamp(path))?.size ?? 0;
+    if (size > LARGE_FILE_BYTES) {
+      const open = await this.choose(
+        `${path.split('/').pop()} is ${formatSize(size)}`,
+        'Opening a file this large can take a while and use several times its size in memory.',
+        [
+          { label: 'Cancel', kind: 'primary', value: false },
+          { label: 'Open anyway', value: true },
+        ],
+      );
+      if (!open) return;
+    }
     try {
       const file = await readPath(path);
       await this.loadFile(file);
@@ -258,6 +300,7 @@ export class AppState {
       this.resetFind();
       this.doc.loadText(text, { name: file.name, path: file.path, encoding });
       this.sourceBytes = file.bytes;
+      this.diskStamp = this.noticedStamp = file.stamp ?? null;
       this.grid.widths = [];
       this.grid.editing = null;
       this.grid.select(0, 0, false);
@@ -276,6 +319,7 @@ export class AppState {
     this.commitPending();
     this.resetFind();
     this.sourceBytes = null;
+    this.diskStamp = this.noticedStamp = null;
     this.doc.newSheet();
     this.grid.widths = [];
     this.grid.editing = null;
@@ -287,6 +331,7 @@ export class AppState {
     if (!this.doc.loaded) return false;
     this.commitPending();
     const name = /\.[a-z0-9]{1,5}$/i.test(this.doc.name) ? this.doc.name : `${this.doc.name}.csv`;
+    if (!forcePrompt && this.doc.path && !(await this.confirmOverwrite(this.doc.path))) return false;
     try {
       const savePoint = this.doc.savePoint();
       const text = this.doc.toText();
@@ -295,6 +340,7 @@ export class AppState {
       const result = await saveBytes(bytes ?? encodeText(text, 'UTF-8')!, name, this.doc.path, forcePrompt);
       if (!result) return false;
       this.sourceBytes = null;
+      this.diskStamp = this.noticedStamp = result.stamp ?? null;
       this.doc.markSaved(result.path, result.name, savePoint);
       if (result.path) this.recent = pushRecent(result.path, result.name);
       if (bytes) {
@@ -310,6 +356,37 @@ export class AppState {
       this.toast(`Couldn’t save: ${String(e)}`, 'error', 4000);
       return false;
     }
+  }
+
+  private async confirmOverwrite(path: string): Promise<boolean> {
+    const now = await fileStamp(path);
+    if (!now || !this.diskStamp || sameStamp(now, this.diskStamp)) return true;
+    return this.choose(
+      `${this.doc.name} has changed on disk`,
+      'Something else modified this file after you opened it. Saving will replace those changes with yours.',
+      [
+        { label: 'Cancel', kind: 'primary', value: false },
+        { label: 'Overwrite', kind: 'danger', value: true },
+      ],
+    );
+  }
+
+  /** Called when the window regains focus. Offers to reload a file that another program has changed. */
+  async checkDisk(): Promise<void> {
+    const path = this.doc.path;
+    if (!this.doc.loaded || !path || this.dialog) return;
+    const now = await fileStamp(path);
+    if (!now || path !== this.doc.path || sameStamp(now, this.noticedStamp)) return;
+    this.noticedStamp = now;
+    if (this.doc.dirty) {
+      this.toast(`${this.doc.name} has changed on disk. Saving will ask before overwriting it.`, 'info', 6000);
+      return;
+    }
+    const reload = await this.choose(`${this.doc.name} has changed on disk`, 'Reload it to see the new contents?', [
+      { label: 'Keep this version', value: false },
+      { label: 'Reload', kind: 'primary', value: true },
+    ]);
+    if (reload) await this.openPath(path, false);
   }
 
   async closeFile(): Promise<void> {

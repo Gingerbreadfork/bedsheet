@@ -175,6 +175,8 @@ This is the part spreadsheet apps get wrong, so it's the part bedsheet is strict
   leading and trailing spaces are always quoted, per RFC 4180. Beyond that, a file that quotes
   every field, or every text field, is written back the same way, and a file that doesn't
   gets no extra quotes.
+- **Other programs' changes aren't trampled.** If the file changes on disk while it's open,
+  bedsheet offers to reload it, and asks before saving over it.
 - **Writes are atomic.** The file is written to a temporary sibling and renamed into place,
   so a crash mid-save can't leave you with half a file.
 

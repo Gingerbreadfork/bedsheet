@@ -47,6 +47,9 @@
           void app.quit();
         })
         .then((u) => cleanups.push(u));
+      const onFocus = (): void => void app.checkDisk();
+      window.addEventListener('focus', onFocus);
+      cleanups.push(() => window.removeEventListener('focus', onFocus));
       document.addEventListener('contextmenu', suppressNativeMenu);
       cleanups.push(() => document.removeEventListener('contextmenu', suppressNativeMenu));
     }
