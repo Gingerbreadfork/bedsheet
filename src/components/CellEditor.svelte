@@ -43,7 +43,11 @@
     done = true;
     const { r, c } = edit;
     grid.editing = null;
-    if (save) doc.setCell(grid.dataRow(r), c, value.replaceAll('\r\n', '\n'));
+    if (save) {
+      const dr = grid.dataRow(r);
+      const text = value.replaceAll('\r\n', '\n');
+      doc.setCell(dr, c, doc.cell(dr, c).includes('\r\n') ? text.replaceAll('\n', '\r\n') : text);
+    }
     if (move) grid.move(move[0], move[1], false);
     onDone();
   }
