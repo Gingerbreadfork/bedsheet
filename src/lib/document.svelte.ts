@@ -399,6 +399,24 @@ export class Doc {
     );
   }
 
+  /** Changes the delimiter the file will be saved with. */
+  setDelimiter(delimiter: string): void {
+    const prev = this.delimiter;
+    if (prev === delimiter) return;
+    this.exec(
+      {
+        label: 'Change delimiter',
+        redo: () => {
+          this.delimiter = delimiter;
+        },
+        undo: () => {
+          this.delimiter = prev;
+        },
+      },
+      'cell',
+    );
+  }
+
   setHasHeader(value: boolean): void {
     if (value === this.hasHeader) return;
     const width = this.columns.length;

@@ -531,7 +531,7 @@ export class AppState {
       this.grid.select(0, 0, false);
       this.toast(`Reading with ${delimiterLabel(d).toLowerCase()} delimiter`);
     } else {
-      this.doc.delimiter = d;
+      this.doc.setDelimiter(d);
       this.toast(`Will save with ${delimiterLabel(d).toLowerCase()} delimiter`);
     }
   }

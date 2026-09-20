@@ -65,6 +65,17 @@ describe('dirty tracking', () => {
     expect(d.dirty).toBe(false);
   });
 
+  it('counts a delimiter change as an edit', () => {
+    const d = load('a,b\n1,2\n');
+    d.markSaved('/tmp/t.csv', 't.csv');
+    d.setDelimiter(';');
+    expect(d.dirty).toBe(true);
+    expect(d.toText()).toBe('a;b\n1;2\n');
+    d.undo();
+    expect(d.dirty).toBe(false);
+    expect(d.delimiter).toBe(',');
+  });
+
   it('stays dirty when the undo history no longer reaches the saved state', () => {
     const d = load('a\nx\n');
     for (let i = 0; i < 501; i++) d.setCell(0, 0, `v${i}`);
