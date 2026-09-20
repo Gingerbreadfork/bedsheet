@@ -180,7 +180,10 @@ export class AppState {
     });
     this.doc.onChange((kind) => {
       this.grid.ensureValid();
-      if (kind !== 'cell') this.scope = null;
+      if (kind !== 'cell') {
+        this.scope = null;
+        this.grid.sortMark = null;
+      }
       if (kind === 'load') {
         this.grid.matchIndex = -1;
         this.runSearch(false);
@@ -726,6 +729,7 @@ export class AppState {
     this.commitPending();
     const c = this.grid.anchor.c;
     this.doc.sortBy(c, dir);
+    this.grid.sortMark = { c, dir };
     this.toast(`Sorted by ${this.doc.columnLabel(c)}, ${dir === 'asc' ? 'ascending' : 'descending'}`);
   }
 

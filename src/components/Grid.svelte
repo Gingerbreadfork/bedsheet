@@ -164,6 +164,22 @@
     }
     return Math.min(MAX_COL_WIDTH, Math.max(MIN_COL_WIDTH, Math.ceil(w + 22 * grid.zoom)));
   }
+  function headerFit(c: number): number {
+    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+    if (!measureCtx) return DEFAULT_COL_WIDTH;
+    measureCtx.font = cellFont(500);
+    return Math.ceil(measure(headers[c] ?? '') + 8 + 22 * grid.zoom);
+  }
+
+  $effect(() => {
+    const mark = grid.sortMark;
+    if (!mark) return;
+    untrack(() => {
+      const needed = Math.min(MAX_COL_WIDTH, headerFit(mark.c) + 16);
+      if ((grid.widths[mark.c] ?? 0) < needed) grid.widths[mark.c] = needed;
+    });
+  });
+
   function fitAll(): void {
     grid.widths = Array.from({ length: colCount }, (_, c) => fitColumn(c));
   }
@@ -812,6 +828,11 @@
             />
           {:else}
             <span class="hlabel" class:placeholder={!doc.hasHeader}>{headers[c]}</span>
+            {#if grid.sortMark?.c === c}
+              <span class="sorted" title={grid.sortMark.dir === 'asc' ? 'Sorted ascending' : 'Sorted descending'}>
+                <Icon name={grid.sortMark.dir === 'asc' ? 'arrowUp' : 'arrowDown'} size={12} />
+              </span>
+            {/if}
           {/if}
           <div class="resize"></div>
         </div>
@@ -980,6 +1001,12 @@
   .hlabel {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .sorted {
+    display: flex;
+    flex: none;
+    margin-left: 4px;
+    color: var(--accent);
   }
   .hlabel.placeholder {
     color: var(--ink-3);

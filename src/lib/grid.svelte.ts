@@ -40,6 +40,8 @@ export class GridState {
   zoom = $state(1);
   mono = $state(false);
   viewRows = $state.raw<number[] | null>(null);
+  /** The column the rows were last sorted by, until something reorders them again. */
+  sortMark = $state.raw<{ c: number; dir: 'asc' | 'desc' } | null>(null);
   matches = $state.raw<Pos[]>([]);
   matchSet = $state.raw<Set<number>>(new Set());
   matchIndex = $state(-1);

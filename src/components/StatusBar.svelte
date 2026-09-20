@@ -47,6 +47,8 @@
         }
       }
       if (count > 1) stats = `Sum ${nf.format(sum)}   Avg ${nf.format(sum / count)}   Count ${count.toLocaleString()}`;
+    } else {
+      stats = 'Too many cells to total';
     }
     return { text: `${rows.toLocaleString()} × ${cols.toLocaleString()} selected`, type: typeLabel, stats };
   });

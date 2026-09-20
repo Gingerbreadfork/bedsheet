@@ -136,7 +136,7 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 | Move onto the column headers | Up from the first row, then Left and Right |
 | Rename a column | Enter or just type on its header, or double-click it |
 | Resize a column, fit it to content | Drag the header edge, double-click it |
-| Sort by a column | Right-click its header |
+| Sort by a column | Right-click its header. Ties keep their order, so sort by the minor column first |
 | Use the first row as the header | Header row toggle in the status bar |
 
 | Finding | |
