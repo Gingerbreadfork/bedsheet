@@ -88,6 +88,7 @@ The packages register Bedsheet as a handler for `.csv` and `.tsv` files, so it s
 ```sh
 bedsheet                    # start with the empty sheet
 bedsheet export.csv         # open a file
+bedsheet a.csv b.csv        # open several, each in its own window
 ```
 
 ### Keyboard

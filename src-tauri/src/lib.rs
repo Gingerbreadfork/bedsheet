@@ -130,24 +130,39 @@ fn write_file(request: Request<'_>) -> Result<FileInfo, String> {
 }
 
 /// File paths passed on the command line, resolved to absolute paths.
-#[tauri::command]
-fn launch_files() -> Vec<String> {
+fn launch_paths() -> Vec<PathBuf> {
     std::env::args_os()
         .skip(1)
-        .filter_map(|a| {
-            let p = PathBuf::from(a);
-            if p.is_file() {
-                std::fs::canonicalize(&p).ok().or(Some(p))
-            } else {
-                None
-            }
-        })
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+        .map(|p| fs::canonicalize(&p).unwrap_or(p))
+        .collect()
+}
+
+/// The first file is opened in this window; the frontend ignores the rest.
+#[tauri::command]
+fn launch_files() -> Vec<String> {
+    launch_paths()
+        .iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect()
 }
 
+/// Starts another copy of the app for each file after the first, so every file gets a window.
+fn open_extra_files() {
+    let files = launch_paths();
+    let exe = std::env::var_os("APPIMAGE")
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_exe().ok());
+    let Some(exe) = exe else { return };
+    for file in files.iter().skip(1) {
+        let _ = std::process::Command::new(&exe).arg(file).spawn();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    open_extra_files();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
