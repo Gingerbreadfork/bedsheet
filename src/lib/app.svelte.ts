@@ -242,7 +242,7 @@ export class AppState {
       const file = await readPath(path);
       await this.loadFile(file);
     } catch (e) {
-      this.recent = removeRecent(path);
+      if (/os error 2\b/.test(String(e))) this.recent = removeRecent(path);
       this.toast(`Couldn’t open ${path.split('/').pop()}: ${String(e)}`, 'error', 4000);
     }
   }
@@ -384,8 +384,14 @@ export class AppState {
 
   async paste(): Promise<void> {
     if (!this.doc.loaded) return;
-    const text = await clipboard.readText();
-    this.pasteText(text);
+    let text = '';
+    try {
+      text = await clipboard.readText();
+    } catch {
+      /* empty clipboard, or something that isn't text */
+    }
+    if (text) this.pasteText(text);
+    else this.toast('Nothing to paste');
   }
 
   pasteText(text: string): void {
