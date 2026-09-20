@@ -1,5 +1,5 @@
 import { parseCsv, serializeCsv, detectDelimiter, columnLetter, type LineEnding } from './csv';
-import { inferColumnType, toNumber } from './infer';
+import { inferColumnType, toNumber, toTimestamp, detectDateOrder } from './infer';
 
 export interface Command {
   label: string;
@@ -336,19 +336,22 @@ export class Doc {
     );
   }
 
+  /** Typed values first, then values that don't parse, then blanks. Only the first two follow `dir`. */
   sortBy(c: number, dir: 'asc' | 'desc'): void {
     const type = inferColumnType(this.rows, c);
     const sign = dir === 'asc' ? 1 : -1;
-    const indexed = this.rows.map((row, i) => ({ i, v: row[c] ?? '' }));
-    const compare = (a: { v: string }, b: { v: string }): number => {
-      const ae = a.v.trim() === '';
-      const be = b.v.trim() === '';
-      if (ae || be) return ae && be ? 0 : ae ? 1 : -1;
-      if (type === 'number') return (toNumber(a.v) - toNumber(b.v)) * sign;
-      if (type === 'date') return (Date.parse(a.v) - Date.parse(b.v)) * sign;
-      return collator.compare(a.v, b.v) * sign;
-    };
-    indexed.sort((a, b) => compare(a, b) || a.i - b.i);
+    const order = type === 'date' ? detectDateOrder(this.rows.map((row) => row[c] ?? '')) : 'mdy';
+    const indexed = this.rows.map((row, i) => {
+      const v = row[c] ?? '';
+      if (v.trim() === '') return { i, v, k: 0, rank: 2 };
+      const k = type === 'number' ? toNumber(v) : type === 'date' ? toTimestamp(v, order) : NaN;
+      return { i, v, k, rank: Number.isNaN(k) ? 1 : 0 };
+    });
+    indexed.sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      const d = a.rank === 0 ? a.k - b.k : a.rank === 1 ? collator.compare(a.v, b.v) : 0;
+      return d * sign || a.i - b.i;
+    });
     const perm = indexed.map((x) => x.i);
     const inverse = new Array<number>(perm.length);
     for (let k = 0; k < perm.length; k++) inverse[perm[k]] = k;
