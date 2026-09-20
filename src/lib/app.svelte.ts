@@ -1,5 +1,5 @@
 import { Doc } from './document.svelte';
-import { GridState, cellKey, type Pos } from './grid.svelte';
+import { GridState, cellKey, DEFAULT_COL_WIDTH, type Pos } from './grid.svelte';
 import { decodeBytes, serializeCsv, parseClipboardBlock, DELIMITERS, delimiterLabel } from './csv';
 import { parseShortcut, eventMatches, isEditableTarget, type Shortcut } from './keys';
 import type { CellEdit } from './document.svelte';
@@ -120,6 +120,18 @@ export class AppState {
         if (s) this.bindings.push({ s: parseShortcut(s), cmd });
       }
     }
+    this.doc.onColumnChange((change) => {
+      const widths = this.grid.widths;
+      if (widths.length === 0) return;
+      if (change.kind === 'remove') {
+        this.grid.widths = widths.filter((_, i) => !change.at.includes(i));
+        return;
+      }
+      const next = [...widths];
+      for (const i of change.at) next.splice(i, 0, DEFAULT_COL_WIDTH);
+      this.grid.widths = next;
+      if (change.restored) queueMicrotask(() => this.autoFit?.(change.at));
+    });
     this.doc.onChange((kind) => {
       this.grid.ensureValid();
       if (kind === 'load') {
@@ -478,7 +490,6 @@ export class AppState {
     const { c0, c1 } = g.range;
     const at = where === 'left' ? c0 : c1 + 1;
     this.doc.insertColumn(at);
-    g.widths.splice(at, 0, 140);
     g.select(g.anchor.r, at);
   }
 
@@ -493,7 +504,6 @@ export class AppState {
     }
     const { c0 } = g.range;
     this.doc.deleteColumns(cols);
-    g.widths = g.widths.filter((_, i) => !cols.includes(i));
     g.select(g.anchor.r, c0);
     this.toast(cols.length === 1 ? 'Deleted column' : `Deleted ${cols.length} columns`);
   }

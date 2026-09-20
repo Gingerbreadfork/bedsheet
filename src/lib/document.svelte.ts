@@ -13,6 +13,13 @@ export interface CellEdit {
   value: string;
 }
 
+/** Columns added or removed at these indices. `restored` marks columns brought back with their data. */
+export interface ColumnChange {
+  kind: 'insert' | 'remove';
+  at: number[];
+  restored?: boolean;
+}
+
 export interface LoadMeta {
   name: string;
   path: string | null;
@@ -46,6 +53,17 @@ export class Doc {
   private cleanTop: Command | null = null;
   private sourceText: string | null = null;
   private listeners = new Set<(kind: 'cell' | 'structure' | 'load') => void>();
+
+  private columnListeners = new Set<(change: ColumnChange) => void>();
+
+  onColumnChange(fn: (change: ColumnChange) => void): () => void {
+    this.columnListeners.add(fn);
+    return () => this.columnListeners.delete(fn);
+  }
+
+  private emitColumns(change: ColumnChange): void {
+    for (const fn of this.columnListeners) fn(change);
+  }
 
   onChange(fn: (kind: 'cell' | 'structure' | 'load') => void): () => void {
     this.listeners.add(fn);
@@ -288,10 +306,12 @@ export class Doc {
         redo: () => {
           this.columns.splice(at, 0, name ?? this.freshColumnName(at));
           for (const row of this.rows) row.splice(at, 0, '');
+          this.emitColumns({ kind: 'insert', at: [at] });
         },
         undo: () => {
           this.columns.splice(at, 1);
           for (const row of this.rows) row.splice(at, 1);
+          this.emitColumns({ kind: 'remove', at: [at] });
         },
       },
       'structure',
@@ -313,12 +333,14 @@ export class Doc {
             this.columns.splice(sorted[k], 1);
             for (const row of this.rows) row.splice(sorted[k], 1);
           }
+          this.emitColumns({ kind: 'remove', at: sorted });
         },
         undo: () => {
           for (let k = 0; k < sorted.length; k++) {
             this.columns.splice(sorted[k], 0, names[k]);
             for (let r = 0; r < this.rows.length; r++) this.rows[r].splice(sorted[k], 0, values[r][k]);
           }
+          this.emitColumns({ kind: 'insert', at: sorted, restored: true });
         },
       },
       'structure',

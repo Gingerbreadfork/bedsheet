@@ -95,3 +95,23 @@ describe('opening something else', () => {
     expect(app.grid.rowCount).toBe(30);
   });
 });
+
+describe('column widths', () => {
+  it('stay with their columns through insert, delete, undo and redo', () => {
+    load('a,b,c,d\n1,2,3,4\n');
+    app.grid.widths = [50, 100, 200, 300];
+    app.grid.select(0, 1, false);
+    app.insertColumn('left');
+    expect(app.grid.widths).toEqual([50, 140, 100, 200, 300]);
+    app.undo();
+    expect(app.grid.widths).toEqual([50, 100, 200, 300]);
+    app.redo();
+    expect(app.grid.widths).toEqual([50, 140, 100, 200, 300]);
+    app.undo();
+    app.grid.select(0, 1, false);
+    app.deleteColumns();
+    expect(app.grid.widths).toEqual([50, 200, 300]);
+    app.undo();
+    expect(app.grid.widths).toEqual([50, 140, 200, 300]);
+  });
+});
