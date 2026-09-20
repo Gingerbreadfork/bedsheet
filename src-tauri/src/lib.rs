@@ -1,3 +1,5 @@
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use percent_encoding::percent_decode_str;
@@ -31,20 +33,87 @@ fn info_for(path: &Path) -> Result<FileInfo, String> {
 }
 
 /// Reads a file and returns its raw bytes, bypassing JSON serialization.
-#[tauri::command]
+#[tauri::command(async)]
 fn read_file(path: String) -> Result<Response, String> {
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     Ok(Response::new(bytes))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn file_info(path: String) -> Result<FileInfo, String> {
     info_for(Path::new(&path))
 }
 
+fn write_in_place(target: &Path, bytes: &[u8]) -> io::Result<()> {
+    let mut file = OpenOptions::new().write(true).truncate(true).open(target)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+/// Writes `bytes` to a new sibling of `target` carrying the mode and owner of `existing`.
+fn write_temp(tmp: &Path, bytes: &[u8], existing: Option<&fs::Metadata>) -> io::Result<()> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(tmp)?;
+    file.write_all(bytes)?;
+    if let Some(meta) = existing {
+        fs::set_permissions(tmp, meta.permissions())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let own = file.metadata()?;
+            if own.uid() != meta.uid() || own.gid() != meta.gid() {
+                std::os::unix::fs::chown(tmp, Some(meta.uid()), Some(meta.gid()))?;
+            }
+        }
+    }
+    file.sync_all()
+}
+
+#[cfg(unix)]
+fn has_other_links(meta: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    meta.nlink() > 1
+}
+
+#[cfg(not(unix))]
+fn has_other_links(_: &fs::Metadata) -> bool {
+    false
+}
+
+/// Replaces the file atomically, writing through symlinks and keeping its mode and owner.
+/// Overwrites in place when it isn't permitted to create a sibling or give it the original's owner.
+fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let dir = target
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let existing = fs::metadata(&target).ok();
+    if existing.as_ref().is_some_and(has_other_links) {
+        return write_in_place(&target, bytes);
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let tmp = dir.join(format!(".bedsheet-{}-{stamp}.tmp", std::process::id()));
+    let staged =
+        write_temp(&tmp, bytes, existing.as_ref()).and_then(|()| fs::rename(&tmp, &target));
+    if let Err(e) = staged {
+        let _ = fs::remove_file(&tmp);
+        return if existing.is_some() && e.kind() == io::ErrorKind::PermissionDenied {
+            write_in_place(&target, bytes)
+        } else {
+            Err(e)
+        };
+    }
+    if let Ok(d) = File::open(dir) {
+        let _ = d.sync_all();
+    }
+    Ok(())
+}
+
 /// Writes raw request bytes to the path given in the `x-path` header.
-/// Writes to a sibling temp file first, then renames over the target.
-#[tauri::command]
+#[tauri::command(async)]
 fn write_file(request: Request<'_>) -> Result<FileInfo, String> {
     let encoded = request
         .headers()
@@ -56,17 +125,7 @@ fn write_file(request: Request<'_>) -> Result<FileInfo, String> {
         InvokeBody::Raw(b) => b,
         InvokeBody::Json(_) => return Err("expected raw body".into()),
     };
-    let dir = path.parent().ok_or("invalid path")?;
-    let stem = path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "file".into());
-    let tmp = dir.join(format!(".{stem}.bedsheet-{}.tmp", std::process::id()));
-    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-    if let Err(e) = std::fs::rename(&tmp, &path) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(e.to_string());
-    }
+    write_atomic(&path, bytes).map_err(|e| e.to_string())?;
     info_for(&path)
 }
 
@@ -101,4 +160,91 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running bedsheet");
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("bedsheet-test-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn leftovers(dir: &Path) -> usize {
+        fs::read_dir(dir)
+            .unwrap()
+            .filter(|e| {
+                e.as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".tmp")
+            })
+            .count()
+    }
+
+    #[test]
+    fn creates_a_new_file() {
+        let dir = scratch("new");
+        let path = dir.join("a.csv");
+        write_atomic(&path, b"a,b\n").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"a,b\n");
+        assert_eq!(leftovers(&dir), 0);
+    }
+
+    #[test]
+    fn keeps_the_mode_of_an_existing_file() {
+        let dir = scratch("mode");
+        let path = dir.join("private.csv");
+        fs::write(&path, "old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        write_atomic(&path, b"new").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn writes_through_a_symlink() {
+        let dir = scratch("link");
+        let real = dir.join("real.csv");
+        let link = dir.join("link.csv");
+        fs::write(&real, "old").unwrap();
+        symlink(&real, &link).unwrap();
+        write_atomic(&link, b"new").unwrap();
+        assert!(fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(fs::read(&real).unwrap(), b"new");
+    }
+
+    #[test]
+    fn keeps_hard_links_pointing_at_the_same_file() {
+        let dir = scratch("hard");
+        let path = dir.join("a.csv");
+        let other = dir.join("b.csv");
+        fs::write(&path, "old").unwrap();
+        fs::hard_link(&path, &other).unwrap();
+        write_atomic(&path, b"new").unwrap();
+        assert_eq!(fs::read(&other).unwrap(), b"new");
+    }
+
+    #[test]
+    fn overwrites_in_place_when_the_directory_is_read_only() {
+        let dir = scratch("readonly");
+        let path = dir.join("a.csv");
+        fs::write(&path, "old").unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+        let result = write_atomic(&path, b"new");
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        result.unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+    }
 }
