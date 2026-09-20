@@ -166,12 +166,15 @@ This is the part spreadsheet apps get wrong, so it's the part bedsheet is strict
 - **Values are never reformatted.** `007` stays `007`. `1,000` stays `1,000`. Dates stay
   whatever string they were. Alignment and number detection are display-only.
 - **The delimiter is preserved.** A semicolon file saves as a semicolon file.
-- **Line endings are preserved.** CRLF in, CRLF out.
+- **Line endings are preserved.** CRLF in, CRLF out, and a file with no line break after its
+  last row doesn't gain one.
 - **The encoding is preserved.** UTF-16 stays UTF-16, Windows-1252 stays Windows-1252, and a
   UTF-8 byte order mark is kept if the file had one. If you type a character the encoding
   can't hold, the file is saved as UTF-8 instead and you're told.
-- **Quoting follows RFC 4180 and only where needed.** Fields containing the delimiter,
-  quotes, line breaks, or leading and trailing spaces are quoted. Nothing else is.
+- **Quoting follows the file.** Fields containing the delimiter, quotes, line breaks, or
+  leading and trailing spaces are always quoted, per RFC 4180. Beyond that, a file that quotes
+  every field, or every text field, is written back the same way, and a file that doesn't
+  gets no extra quotes.
 - **Writes are atomic.** The file is written to a temporary sibling and renamed into place,
   so a crash mid-save can't leave you with half a file.
 

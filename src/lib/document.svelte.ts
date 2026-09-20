@@ -1,4 +1,4 @@
-import { parseCsv, serializeCsv, detectDelimiter, columnLetter, type LineEnding } from './csv';
+import { parseCsv, serializeCsv, detectDelimiter, columnLetter, MINIMAL_QUOTING, type LineEnding, type Quoting } from './csv';
 import { inferColumnType, toNumber, toTimestamp, detectDateOrder } from './infer';
 
 export interface Command {
@@ -44,6 +44,8 @@ export class Doc {
   canUndo = $state(false);
   canRedo = $state(false);
   lineEnding: LineEnding = '\n';
+  quoting: Quoting = MINIMAL_QUOTING;
+  finalNewline = true;
 
   columns: string[] = [];
   rows: string[][] = [];
@@ -96,6 +98,8 @@ export class Doc {
     this.encoding = 'UTF-8';
     this.delimiter = ',';
     this.lineEnding = '\n';
+    this.quoting = MINIMAL_QUOTING;
+    this.finalNewline = true;
     this.loaded = true;
     this.touch('load');
   }
@@ -107,6 +111,8 @@ export class Doc {
     this.sourceText = text;
     this.delimiter = delimiter;
     this.lineEnding = parsed.lineEnding;
+    this.quoting = parsed.quoting;
+    this.finalNewline = parsed.finalNewline;
     this.encoding = meta.encoding;
     this.ragged = parsed.ragged;
     this.name = meta.name;
@@ -140,7 +146,7 @@ export class Doc {
 
   toText(): string {
     const all = this.hasHeader ? [this.columns, ...this.rows] : this.rows;
-    return serializeCsv(all, this.delimiter, this.lineEnding);
+    return serializeCsv(all, this.delimiter, this.lineEnding, { quoting: this.quoting, finalNewline: this.finalNewline });
   }
 
   /** The current undo position, to pass to `markSaved` once a write started now has finished. */

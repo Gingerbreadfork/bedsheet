@@ -85,3 +85,37 @@ describe('columnLetter', () => {
     expect([0, 1, 25, 26, 27, 701, 702].map(columnLetter)).toEqual(['A', 'B', 'Z', 'AA', 'AB', 'ZZ', 'AAA']);
   });
 });
+
+describe('round trip', () => {
+  const roundTrip = (text: string, delimiter = ','): string => {
+    const p = parseCsv(text, delimiter);
+    return serializeCsv(p.rows, delimiter, p.lineEnding, { quoting: p.quoting, finalNewline: p.finalNewline });
+  };
+
+  it('keeps files that quote every field', () => {
+    const text = '"id","name","note"\r\n"007","x",""\r\n"8","a\r\nb","y"\r\n';
+    expect(roundTrip(text)).toBe(text);
+  });
+
+  it('keeps files that quote text but not numbers', () => {
+    const text = '"id","name","score"\n1,"ann",9.5\n2,"bob",-3\n3,"",1e3\n';
+    expect(roundTrip(text)).toBe(text);
+  });
+
+  it('leaves minimally quoted files minimal', () => {
+    const text = 'id,name\n1,"a,b"\n2,plain\n';
+    expect(roundTrip(text)).toBe(text);
+    expect(parseCsv('"id",name\n1,x\n2,y\n', ',').quoting.style).toBe('minimal');
+  });
+
+  it('keeps a missing final line break missing', () => {
+    expect(roundTrip('a,b\n1,2')).toBe('a,b\n1,2');
+    expect(roundTrip('a,b\n1,2\n')).toBe('a,b\n1,2\n');
+  });
+
+  it('keeps bare CR line endings', () => {
+    const p = parseCsv('a,b\r1,2\r', ',');
+    expect(p.lineEnding).toBe('\r');
+    expect(roundTrip('a,b\r1,2\r')).toBe('a,b\r1,2\r');
+  });
+});

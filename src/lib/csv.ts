@@ -1,4 +1,12 @@
-export type LineEnding = '\n' | '\r\n';
+export type LineEnding = '\n' | '\r\n' | '\r';
+
+/** Which fields are quoted beyond the ones that have to be. `empty` covers blank fields. */
+export interface Quoting {
+  style: 'minimal' | 'all' | 'nonnumeric';
+  empty: boolean;
+}
+
+export const MINIMAL_QUOTING: Quoting = { style: 'minimal', empty: false };
 
 export interface DelimiterOption {
   char: string;
@@ -21,6 +29,9 @@ export interface ParseResult {
   columnCount: number;
   lineEnding: LineEnding;
   ragged: boolean;
+  /** Whether the text ended with a line break. */
+  finalNewline: boolean;
+  quoting: Quoting;
 }
 
 function countOutsideQuotes(line: string, ch: string): number {
@@ -72,6 +83,42 @@ export function detectDelimiter(text: string, fileName?: string): string {
 const QUOTE = 34;
 const CR = 13;
 const LF = 10;
+const QUOTING_SAMPLE_ROWS = 200;
+const PLAIN_NUMBER = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/;
+
+/** Works out the quoting convention from which of the sampled fields were quoted without needing it. */
+function detectQuoting(rows: string[][], quoted: boolean[][], delimiter: string): Quoting {
+  let text = 0;
+  let textQuoted = 0;
+  let numbers = 0;
+  let numbersQuoted = 0;
+  let empty = 0;
+  let emptyQuoted = 0;
+  for (let r = 0; r < quoted.length; r++) {
+    for (let c = 0; c < quoted[r].length; c++) {
+      const v = rows[r][c];
+      const q = quoted[r][c] ? 1 : 0;
+      if (v === '') {
+        empty++;
+        emptyQuoted += q;
+      } else if (needsQuote(v, delimiter)) {
+        continue;
+      } else if (PLAIN_NUMBER.test(v)) {
+        numbers++;
+        numbersQuoted += q;
+      } else {
+        text++;
+        textQuoted += q;
+      }
+    }
+  }
+  const mostly = (part: number, whole: number): boolean => whole > 0 && part >= whole * 0.95;
+  let style: Quoting['style'] = 'minimal';
+  if (textQuoted + numbersQuoted > 0 && mostly(textQuoted + numbersQuoted, text + numbers)) style = 'all';
+  else if (mostly(textQuoted, text) && numbersQuoted === 0) style = 'nonnumeric';
+  if (style === 'minimal') return MINIMAL_QUOTING;
+  return { style, empty: empty === 0 || mostly(emptyQuoted, empty) };
+}
 
 /** RFC 4180 parser. Tolerates unterminated quotes, mixed line endings, and ragged rows. */
 export function parseCsv(text: string, delimiter: string): ParseResult {
@@ -82,11 +129,18 @@ export function parseCsv(text: string, delimiter: string): ParseResult {
   let row: string[] = [];
   let crlf = 0;
   let lf = 0;
+  let cr = 0;
+  const quoted: boolean[][] = [];
+  let quotedRow: boolean[] = [];
 
-  if (i >= n) return { rows, columnCount: 0, lineEnding: '\n', ragged: false };
+  if (i >= n) {
+    return { rows, columnCount: 0, lineEnding: '\n', ragged: false, finalNewline: true, quoting: MINIMAL_QUOTING };
+  }
 
   for (;;) {
     let field: string;
+    const sampling = rows.length < QUOTING_SAMPLE_ROWS;
+    if (sampling) quotedRow.push(text.charCodeAt(i) === QUOTE);
     if (text.charCodeAt(i) === QUOTE) {
       i++;
       let start = i;
@@ -130,6 +184,7 @@ export function parseCsv(text: string, delimiter: string): ParseResult {
     row.push(field);
 
     if (i >= n) {
+      if (sampling) quoted.push(quotedRow);
       rows.push(row);
       break;
     }
@@ -137,6 +192,7 @@ export function parseCsv(text: string, delimiter: string): ParseResult {
     if (c === d) {
       i++;
       if (i >= n) {
+        if (sampling) quoted.push([...quotedRow, false]);
         row.push('');
         rows.push(row);
         break;
@@ -149,12 +205,14 @@ export function parseCsv(text: string, delimiter: string): ParseResult {
         crlf++;
       } else {
         i++;
-        lf++;
+        cr++;
       }
     } else {
       i++;
       lf++;
     }
+    if (sampling) quoted.push(quotedRow);
+    quotedRow = [];
     rows.push(row);
     row = [];
     if (i >= n) break;
@@ -176,7 +234,16 @@ export function parseCsv(text: string, delimiter: string): ParseResult {
     }
   }
 
-  return { rows, columnCount, lineEnding: crlf > lf ? '\r\n' : '\n', ragged };
+  const lineEnding: LineEnding = crlf > lf && crlf >= cr ? '\r\n' : cr > lf ? '\r' : '\n';
+  const last = text.charCodeAt(n - 1);
+  return {
+    rows,
+    columnCount,
+    lineEnding,
+    ragged,
+    finalNewline: last === LF || last === CR,
+    quoting: detectQuoting(rows, quoted.slice(0, rows.length), delimiter),
+  };
 }
 
 function needsQuote(s: string, delimiter: string): boolean {
@@ -187,25 +254,37 @@ function needsQuote(s: string, delimiter: string): boolean {
   return first === 32 || last === 32;
 }
 
-export function serializeRow(row: readonly string[], delimiter: string): string {
+function wantsQuote(v: string, quoting: Quoting): boolean {
+  if (quoting.style === 'minimal') return false;
+  if (v === '') return quoting.empty;
+  return quoting.style === 'all' || !PLAIN_NUMBER.test(v);
+}
+
+export function serializeRow(row: readonly string[], delimiter: string, quoting: Quoting = MINIMAL_QUOTING): string {
   let out = '';
   for (let c = 0; c < row.length; c++) {
     const v = row[c] ?? '';
     if (c > 0) out += delimiter;
-    out += needsQuote(v, delimiter) ? '"' + v.replaceAll('"', '""') + '"' : v;
+    out += needsQuote(v, delimiter) || wantsQuote(v, quoting) ? '"' + v.replaceAll('"', '""') + '"' : v;
   }
   return out;
+}
+
+export interface SerializeOptions {
+  quoting?: Quoting;
+  finalNewline?: boolean;
 }
 
 export function serializeCsv(
   rows: Iterable<readonly string[]>,
   delimiter: string,
   lineEnding: LineEnding = '\n',
+  { quoting = MINIMAL_QUOTING, finalNewline = true }: SerializeOptions = {},
 ): string {
   const lines: string[] = [];
-  for (const r of rows) lines.push(serializeRow(r, delimiter));
+  for (const r of rows) lines.push(serializeRow(r, delimiter, quoting));
   if (lines.length === 0) return '';
-  return lines.join(lineEnding) + lineEnding;
+  return lines.join(lineEnding) + (finalNewline ? lineEnding : '');
 }
 
 /** Parses tab-separated clipboard text into a block; falls back to lines, then a single value. */
