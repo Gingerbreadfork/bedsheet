@@ -2,6 +2,7 @@
   import { app } from '../lib/app.svelte';
 
   let primary = $state<HTMLButtonElement>();
+  let panel = $state<HTMLDivElement>();
   let dialog = $derived(app.dialog);
 
   $effect(() => {
@@ -16,9 +17,18 @@
       const cancel = dialog.actions.find((a) => a.label === 'Cancel') ?? dialog.actions[dialog.actions.length - 2];
       cancel?.run();
     } else if (e.key === 'Enter') {
+      const focused = document.activeElement;
+      if (focused instanceof HTMLButtonElement && panel?.contains(focused)) return;
       e.preventDefault();
       e.stopPropagation();
       dialog.actions.find((a) => a.kind === 'primary')?.run();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      const buttons = Array.from(panel?.querySelectorAll('button') ?? []);
+      if (buttons.length === 0) return;
+      const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const step = e.shiftKey ? -1 : 1;
+      buttons[(i + step + buttons.length) % buttons.length].focus();
     }
   }
 </script>
@@ -27,7 +37,7 @@
 
 {#if dialog}
   <div class="scrim" role="presentation">
-    <div class="panel" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title">
+    <div class="panel" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title" bind:this={panel}>
       <h2 id="dlg-title">{dialog.title}</h2>
       <p>{dialog.message}</p>
       <div class="actions">
