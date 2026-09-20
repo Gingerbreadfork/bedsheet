@@ -537,6 +537,7 @@ export class AppState {
 
   runSearch(keepView: boolean): void {
     clearTimeout(this.searchTimer);
+    this.searchTimer = undefined;
     const g = this.grid;
     const q = this.query;
     if (!q) {
@@ -666,7 +667,10 @@ export class AppState {
     const v = this.doc.cell(p.r, p.c);
     this.doc.setCell(p.r, p.c, this.replaceIn(v));
     this.runSearch(true);
-    if (g.matches.length > 0) this.goToMatch(Math.min(i, g.matches.length - 1));
+    if (g.matches.length === 0) return;
+    const same = g.matches[i];
+    if (same && same.r === p.r && same.c === p.c) i++;
+    this.goToMatch(i % g.matches.length);
   }
 
   replaceAll(): void {
@@ -680,7 +684,7 @@ export class AppState {
   }
 
   private replaceIn(value: string): string {
-    if (this.matchCase) return value.replaceAll(this.query, this.replaceWith);
+    if (this.matchCase) return value.replaceAll(this.query, () => this.replaceWith);
     const re = new RegExp(this.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
     return value.replace(re, () => this.replaceWith);
   }
