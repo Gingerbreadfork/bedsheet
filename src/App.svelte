@@ -67,6 +67,7 @@
       app.grid.focusGrid?.();
       return;
     }
+    if (app.menu) return;
     app.handleKeydown(e);
   }
 

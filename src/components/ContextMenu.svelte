@@ -65,6 +65,8 @@
       e.preventDefault();
       e.stopPropagation();
       app.closeMenu();
+    } else if (e.key === 'Tab' || e.key === 'PageUp' || e.key === 'PageDown' || e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
     }
   }
 

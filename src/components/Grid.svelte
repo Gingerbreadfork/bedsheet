@@ -474,7 +474,7 @@
   // ---------- keyboard ----------
 
   function onKeyDown(e: KeyboardEvent): void {
-    if (grid.editing || grid.editingHeader !== null) return;
+    if (app.menu || grid.editing || grid.editingHeader !== null) return;
     if (rowCount === 0 || colCount === 0) return;
     const ctrl = e.ctrlKey;
     const shift = e.shiftKey;
