@@ -50,26 +50,29 @@
   app.commitEdit = () => finish(true);
 
   function onKey(e: KeyboardEvent): void {
-    e.stopPropagation();
     const replaceMode = edit.mode === 'replace';
     switch (e.key) {
       case 'Enter':
+        e.stopPropagation();
         e.preventDefault();
         if (e.altKey) insertNewline();
         else if (e.ctrlKey) finish(true);
         else finish(true, [e.shiftKey ? -1 : 1, 0]);
         return;
       case 'Tab':
+        e.stopPropagation();
         e.preventDefault();
         finish(true, [0, e.shiftKey ? -1 : 1]);
         return;
       case 'Escape':
+        e.stopPropagation();
         e.preventDefault();
         finish(false);
         return;
       case 'ArrowUp':
       case 'ArrowDown':
         if (replaceMode || lines === 1) {
+          e.stopPropagation();
           e.preventDefault();
           finish(true, [e.key === 'ArrowUp' ? -1 : 1, 0]);
         }
@@ -77,12 +80,12 @@
       case 'ArrowLeft':
       case 'ArrowRight':
         if (replaceMode) {
+          e.stopPropagation();
           e.preventDefault();
           finish(true, [0, e.key === 'ArrowLeft' ? -1 : 1]);
         }
         return;
     }
-    if (e.ctrlKey && e.key.toLowerCase() === 's') finish(true);
   }
 
   function insertNewline(): void {

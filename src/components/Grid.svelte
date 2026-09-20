@@ -573,6 +573,7 @@
     if (value.trim() !== '' && value !== doc.columns[c]) doc.renameColumn(c, value);
     viewport?.focus({ preventScroll: true });
   }
+  app.commitHeader = commitHeader;
   function cancelHeader(): void {
     grid.editingHeader = null;
     viewport?.focus({ preventScroll: true });
@@ -580,9 +581,11 @@
   function onHeaderKey(e: KeyboardEvent): void {
     if (e.key === 'Enter') {
       e.preventDefault();
+      e.stopPropagation();
       commitHeader();
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       cancelHeader();
     } else if (e.key === 'Tab') {
       e.preventDefault();
@@ -592,7 +595,6 @@
       grid.selectCols(next, next);
       grid.editingHeader = next;
     }
-    e.stopPropagation();
   }
 
   $effect(() => {

@@ -103,6 +103,7 @@ export class AppState {
   focusSearch: ((select?: boolean) => void) | null = null;
   focusReplace: (() => void) | null = null;
   commitEdit: (() => void) | null = null;
+  commitHeader: (() => void) | null = null;
   autoFit: ((cols: number[] | 'all') => void) | null = null;
 
   readonly commands: CommandDef[];
@@ -143,6 +144,12 @@ export class AppState {
         else this.runSearch(keep);
       }
     });
+  }
+
+  /** Commits a cell or header edit that is still open. */
+  commitPending(): void {
+    this.commitEdit?.();
+    this.commitHeader?.();
   }
 
   // ---------- startup ----------
@@ -239,7 +246,7 @@ export class AppState {
   }
 
   async loadFile(file: OpenedFile): Promise<void> {
-    this.commitEdit?.();
+    this.commitPending();
     this.busy = `Opening ${file.name}`;
     await nextFrame();
     try {
@@ -261,7 +268,7 @@ export class AppState {
 
   async newSheet(): Promise<void> {
     if (!(await this.confirmDiscard())) return;
-    this.commitEdit?.();
+    this.commitPending();
     this.resetFind();
     this.doc.newSheet();
     this.grid.widths = [];
@@ -272,7 +279,7 @@ export class AppState {
 
   async save(forcePrompt: boolean): Promise<boolean> {
     if (!this.doc.loaded) return false;
-    this.commitEdit?.();
+    this.commitPending();
     const name = /\.[a-z0-9]{1,5}$/i.test(this.doc.name) ? this.doc.name : `${this.doc.name}.csv`;
     try {
       const savePoint = this.doc.savePoint();
@@ -290,7 +297,7 @@ export class AppState {
 
   async closeFile(): Promise<void> {
     if (!(await this.confirmDiscard())) return;
-    this.commitEdit?.();
+    this.commitPending();
     this.doc.close();
     this.clearFind();
   }
@@ -315,13 +322,13 @@ export class AppState {
   // ---------- editing ----------
 
   undo(): void {
-    this.commitEdit?.();
+    this.commitPending();
     const label = this.doc.undo();
     if (label) this.toast(`Undid: ${label}`);
   }
 
   redo(): void {
-    this.commitEdit?.();
+    this.commitPending();
     const label = this.doc.redo();
     if (label) this.toast(`Redid: ${label}`);
   }
@@ -357,14 +364,14 @@ export class AppState {
 
   async copy(): Promise<void> {
     if (!this.hasCells) return;
-    this.commitEdit?.();
+    this.commitPending();
     await clipboard.writeText(this.selectionText());
     this.toastCells('Copied');
   }
 
   async cut(): Promise<void> {
     if (!this.hasCells) return;
-    this.commitEdit?.();
+    this.commitPending();
     await clipboard.writeText(this.selectionText());
     this.doc.setCells(this.selectionEdits(() => ''), 'Cut');
     this.toastCells('Cut');
@@ -378,7 +385,7 @@ export class AppState {
 
   pasteText(text: string): void {
     if (!this.doc.loaded || !text) return;
-    this.commitEdit?.();
+    this.commitPending();
     const block = parseClipboardBlock(text);
     const g = this.grid;
     const { r0, c0, r1, c1 } = g.range;
@@ -433,7 +440,7 @@ export class AppState {
 
   insertRows(where: 'above' | 'below'): void {
     if (!this.doc.loaded) return;
-    this.commitEdit?.();
+    this.commitPending();
     const g = this.grid;
     const { r0, r1 } = g.range;
     const count = r1 - r0 + 1;
@@ -455,7 +462,7 @@ export class AppState {
 
   deleteRows(): void {
     if (!this.hasCells) return;
-    this.commitEdit?.();
+    this.commitPending();
     const g = this.grid;
     const indices = g.selectedRowIndices;
     const { r0 } = g.range;
@@ -485,7 +492,7 @@ export class AppState {
 
   insertColumn(where: 'left' | 'right'): void {
     if (!this.doc.loaded) return;
-    this.commitEdit?.();
+    this.commitPending();
     const g = this.grid;
     const { c0, c1 } = g.range;
     const at = where === 'left' ? c0 : c1 + 1;
@@ -495,7 +502,7 @@ export class AppState {
 
   deleteColumns(): void {
     if (!this.doc.loaded) return;
-    this.commitEdit?.();
+    this.commitPending();
     const g = this.grid;
     const cols = g.selectedColIndices;
     if (cols.length >= this.doc.colCount) {
@@ -510,7 +517,7 @@ export class AppState {
 
   sort(dir: 'asc' | 'desc'): void {
     if (!this.doc.loaded || this.doc.rowCount < 2) return;
-    this.commitEdit?.();
+    this.commitPending();
     const c = this.grid.anchor.c;
     this.doc.sortBy(c, dir);
     this.toast(`Sorted by ${this.doc.columnLabel(c)}, ${dir === 'asc' ? 'ascending' : 'descending'}`);
@@ -518,14 +525,14 @@ export class AppState {
 
   toggleHeader(): void {
     if (!this.doc.loaded) return;
-    this.commitEdit?.();
+    this.commitPending();
     this.doc.setHasHeader(!this.doc.hasHeader);
     this.grid.select(this.grid.anchor.r, this.grid.anchor.c);
   }
 
   setDelimiter(d: string): void {
     if (!this.doc.loaded || d === this.doc.delimiter) return;
-    this.commitEdit?.();
+    this.commitPending();
     if (this.doc.reparse(d)) {
       this.grid.widths = [];
       this.grid.select(0, 0, false);
@@ -749,6 +756,7 @@ export class AppState {
       if (editable && !cmd.global) continue;
       if (cmd.when && !cmd.when()) continue;
       e.preventDefault();
+      if (editable) this.commitPending();
       void cmd.run();
       return true;
     }
