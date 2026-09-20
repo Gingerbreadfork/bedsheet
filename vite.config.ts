@@ -3,7 +3,10 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 const host = process.env.TAURI_DEV_HOST;
 
-/** Dev-only bridge: POST JS to /__eval and it runs inside the connected app page. */
+/**
+ * Dev-only bridge: POST JS to /__eval with an `x-bedsheet-eval: 1` header and it runs inside the
+ * connected app page. Browsers can't send that header cross-origin, and always send Origin.
+ */
 function evalBridge(): Plugin {
   return {
     name: 'bedsheet-eval-bridge',
@@ -15,6 +18,11 @@ function evalBridge(): Plugin {
         pending.delete(data.id);
       });
       server.middlewares.use('/__eval', (req, res) => {
+        if (req.method !== 'POST' || req.headers['x-bedsheet-eval'] !== '1' || req.headers.origin) {
+          res.statusCode = 403;
+          res.end('forbidden');
+          return;
+        }
         let body = '';
         req.on('data', (c) => (body += c));
         req.on('end', () => {
@@ -38,7 +46,7 @@ function evalBridge(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [svelte(), evalBridge()],
+  plugins: [svelte(), ...(host ? [] : [evalBridge()])],
   clearScreen: false,
   server: {
     port: 1420,
