@@ -215,7 +215,8 @@ green-charcoal rather than gray.
   escaped quotes, embedded line breaks, mixed line endings, BOMs, ragged rows, and
   unterminated quotes.
 - The grid is virtualized on both axes and positions cells absolutely, so a million rows
-  cost the same to render as forty.
+  cost the same to render as forty. Sheets taller than a browser can lay out (a little over a
+  million rows) keep their own scroll offset, so the last row is as reachable as the first.
 - Undo is a command stack. Every operation records how to reverse itself, including sorts,
   which store their permutation.
 - The release binary is about 4.6 MB. It uses the system WebKitGTK.

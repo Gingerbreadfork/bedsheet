@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { app, type MenuItem } from '../lib/app.svelte';
   import { cellKey, MIN_COL_WIDTH, MAX_COL_WIDTH, DEFAULT_COL_WIDTH, type Pos } from '../lib/grid.svelte';
   import { inferAllColumnTypes } from '../lib/infer';
@@ -12,10 +12,14 @@
   const ROW_H = 28;
   const HEAD_H = 32;
   const OVERSCAN = 5;
+  // Browsers stop laying out elements somewhere past 16 million pixels tall.
+  const MAX_SIZER_H = 16_000_000;
 
   let viewport = $state<HTMLDivElement>();
   let scrollTop = $state(0);
   let scrollLeft = $state(0);
+  // Offset into the full-height sheet. Equals scrollTop until the sheet outgrows MAX_SIZER_H.
+  let vTop = $state(0);
   let viewW = $state(0);
   let viewH = $state(0);
   let hoverRow = $state(-1);
@@ -42,10 +46,16 @@
   let totalW = $derived(colLefts[colCount] ?? 0);
   let totalH = $derived(rowCount * rowH);
   let sizerW = $derived(gutterW + totalW + Math.round(40 * grid.zoom));
-  let sizerH = $derived(headH + totalH + rowH);
+  let bodyH = $derived(headH + totalH + rowH);
+  let sizerH = $derived(Math.min(bodyH, MAX_SIZER_H));
+  let scaled = $derived(bodyH > MAX_SIZER_H);
+  let vMax = $derived(Math.max(0, bodyH - viewH));
+  let factor = $derived(scaled ? vMax / Math.max(1, sizerH - viewH) : 1);
+  // Added to a sheet position to get where it sits inside the sizer.
+  let shift = $derived(scrollTop - vTop);
 
-  let firstRow = $derived(Math.max(0, Math.floor(scrollTop / rowH) - OVERSCAN));
-  let lastRow = $derived(Math.min(rowCount - 1, Math.ceil((scrollTop + viewH - headH) / rowH) + OVERSCAN));
+  let firstRow = $derived(Math.max(0, Math.floor(vTop / rowH) - OVERSCAN));
+  let lastRow = $derived(Math.min(rowCount - 1, Math.ceil((vTop + viewH - headH) / rowH) + OVERSCAN));
 
   function colAt(x: number): number {
     let lo = 0;
@@ -94,20 +104,28 @@
   let fullRows = $derived(range.c0 === 0 && range.c1 === colCount - 1 && colCount > 0);
   let fullCols = $derived(range.r0 === 0 && range.r1 === rowCount - 1 && rowCount > 0);
 
+  // Overlays far outside the viewport are held just beyond it so they can't stretch the scroll area.
+  const OFFSCREEN = 2000;
+  function nearView(y: number): number {
+    return Math.min(Math.max(y, vTop - OFFSCREEN), vTop + viewH + OFFSCREEN);
+  }
+
   let selRect = $derived.by(() => {
     if (rowCount === 0 || colCount === 0) return null;
+    const top = nearView(range.r0 * rowH);
+    const bottom = nearView((range.r1 + 1) * rowH);
     return {
       left: gutterW + colLefts[range.c0],
-      top: headH + range.r0 * rowH,
+      top: headH + top + shift,
       width: colLefts[range.c1 + 1] - colLefts[range.c0],
-      height: (range.r1 - range.r0 + 1) * rowH,
+      height: Math.max(0, bottom - top),
     };
   });
   let activeRect = $derived.by(() => {
     if (rowCount === 0 || colCount === 0) return null;
     return {
       left: gutterW + colLefts[active.c],
-      top: headH + active.r * rowH,
+      top: headH + nearView(active.r * rowH) + shift,
       width: colLefts[active.c + 1] - colLefts[active.c],
       height: rowH,
     };
@@ -166,25 +184,65 @@
     else for (const c of cols) grid.widths[c] = fitColumn(c);
   };
 
+  let expectedScrollTop = 0;
+
+  function currentVTop(): number {
+    return scaled || !viewport ? vTop : viewport.scrollTop;
+  }
+
+  /** Scrolls so that `v` pixels of the sheet are above the viewport. */
+  function setVTop(v: number): void {
+    const vp = viewport;
+    if (!vp) return;
+    vTop = Math.min(Math.max(0, v), vMax);
+    vp.scrollTop = scaled ? vTop / factor : vTop;
+    expectedScrollTop = vp.scrollTop;
+    scrollTop = vp.scrollTop;
+    if (!scaled) vTop = scrollTop;
+  }
+
   function scrollIntoView(p: Pos): void {
     const vp = viewport;
     if (!vp || rowCount === 0 || colCount === 0) return;
-    const top = headH + p.r * rowH;
+    const top = p.r * rowH;
     const bottom = top + rowH;
     const left = gutterW + colLefts[p.c];
     const right = left + (colLefts[p.c + 1] - colLefts[p.c]);
-    let st = vp.scrollTop;
+    const current = currentVTop();
+    let vt = current;
     let sl = vp.scrollLeft;
-    if (top - headH < st) st = top - headH;
-    else if (bottom > st + vp.clientHeight) st = bottom - vp.clientHeight;
+    if (top < vt) vt = top;
+    else if (bottom > vt + vp.clientHeight - headH) vt = bottom - (vp.clientHeight - headH);
     if (left - gutterW < sl) sl = left - gutterW;
     else if (right > sl + vp.clientWidth) sl = Math.min(right - vp.clientWidth, left - gutterW);
-    if (st !== vp.scrollTop || sl !== vp.scrollLeft) {
-      vp.scrollTo({ top: st, left: sl, behavior: 'auto' });
-      scrollTop = vp.scrollTop;
+    if (vt !== current) setVTop(vt);
+    if (sl !== vp.scrollLeft) {
+      vp.scrollLeft = sl;
       scrollLeft = vp.scrollLeft;
     }
   }
+
+  $effect(() => {
+    void factor;
+    void vMax;
+    untrack(() => {
+      if (scaled) setVTop(vTop);
+    });
+  });
+
+  $effect(() => {
+    const vp = viewport;
+    if (!vp || !scaled) return;
+    const onWheel = (e: WheelEvent): void => {
+      if (e.ctrlKey) return;
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? rowH : e.deltaMode === 2 ? viewH : 1;
+      if (e.deltaX !== 0) vp.scrollLeft += e.deltaX * unit;
+      if (e.deltaY !== 0) setVTop(vTop + e.deltaY * unit);
+    };
+    vp.addEventListener('wheel', onWheel, { passive: false });
+    return () => vp.removeEventListener('wheel', onWheel);
+  });
   grid.scrollIntoView = scrollIntoView;
   grid.focusGrid = () => viewport?.focus({ preventScroll: true });
 
@@ -192,15 +250,21 @@
     doc.onChange((kind) => {
       if (kind !== 'load' || !viewport) return;
       viewport.scrollTo(0, 0);
+      expectedScrollTop = 0;
       scrollTop = 0;
       scrollLeft = 0;
+      vTop = 0;
     }),
   );
 
   function onScroll(): void {
     if (!viewport) return;
-    scrollTop = viewport.scrollTop;
+    const st = viewport.scrollTop;
     scrollLeft = viewport.scrollLeft;
+    if (scaled && Math.abs(st - expectedScrollTop) >= 1) vTop = Math.min(vMax, st * factor);
+    else if (!scaled) vTop = st;
+    expectedScrollTop = st;
+    scrollTop = st;
   }
 
   // ---------- hit testing ----------
@@ -222,7 +286,7 @@
     const vy = e.clientY - rect.top;
     if (vx >= vp.clientWidth || vy >= vp.clientHeight) return { kind: 'none' };
     const cx = vx + vp.scrollLeft - gutterW;
-    const cy = vy + vp.scrollTop - headH;
+    const cy = vy + currentVTop() - headH;
     const inGutter = vx < gutterW;
     const inHead = vy < headH;
     if (inGutter && inHead) return { kind: 'corner' };
@@ -243,7 +307,7 @@
     const vx = Math.min(Math.max(e.clientX - rect.left, gutterW), vp.clientWidth - 1);
     const vy = Math.min(Math.max(e.clientY - rect.top, headH), vp.clientHeight - 1);
     const cx = vx + vp.scrollLeft - gutterW;
-    const cy = vy + vp.scrollTop - headH;
+    const cy = vy + currentVTop() - headH;
     return grid.clamp({ r: Math.floor(cy / rowH), c: colAt(cx) });
   }
 
@@ -360,7 +424,8 @@
       if (e.clientX > rect.left + vp.clientWidth - edge) dx = Math.min(40, (e.clientX - (rect.left + vp.clientWidth - edge)) * 0.6 + 4);
       else if (e.clientX < rect.left + gutterW + edge && drag.kind !== 'rows') dx = -Math.min(40, (rect.left + gutterW + edge - e.clientX) * 0.6 + 4);
       if (dx === 0 && dy === 0) return;
-      vp.scrollBy(dx, dy);
+      if (dx !== 0) vp.scrollLeft += dx;
+      if (dy !== 0) setVTop(currentVTop() + dy);
       onScroll();
       extendDrag(e);
       autoScrollRaf = requestAnimationFrame(step);
@@ -600,7 +665,7 @@
 
   $effect(() => {
     if (grid.editingHeader !== null) {
-      scrollIntoView({ r: Math.max(0, Math.floor(scrollTop / rowH)), c: grid.editingHeader });
+      scrollIntoView({ r: Math.max(0, Math.floor(vTop / rowH)), c: grid.editingHeader });
       tick().then(() => {
         headerInput?.focus();
         headerInput?.select();
@@ -641,7 +706,7 @@
   oncut={onCut}
   onpaste={onPaste}
 >
-  <div class="sizer" style:width="{sizerW}px" style:height="{sizerH}px">
+  <div class="sizer" class:scaled style:width="{sizerW}px" style:height="{sizerH}px">
     <div class="head" style:width="{gutterW + totalW}px">
       <div class="corner" class:all={fullRows && fullCols}></div>
       {#each visibleCols as c (c)}
@@ -692,7 +757,7 @@
       <div
         class="row"
         class:hover={hoverRow === row.vr}
-        style:top="{headH + row.vr * rowH}px"
+        style:top="{headH + row.vr * rowH + shift}px"
         style:width="{gutterW + totalW}px"
       >
         <div class="gutter" class:sel={rowSel} class:full={rowSel && fullRows}>{row.dr + 1}</div>
@@ -714,7 +779,7 @@
 
     <button
       class="addrow"
-      style:top="{headH + totalH}px"
+      style:top="{headH + nearView(totalH) + shift}px"
       style:width="{gutterW + totalW}px"
       tabindex="-1"
       onpointerdown={(e) => e.stopPropagation()}
@@ -737,6 +802,7 @@
       <div
         class="cursor"
         class:editing={grid.editing !== null}
+        class:still={scaled}
         style:transform="translate({activeRect.left}px, {activeRect.top}px)"
         style:width="{activeRect.width}px"
         style:height="{activeRect.height}px"
@@ -774,6 +840,9 @@
   }
   .sizer {
     position: relative;
+  }
+  .sizer.scaled {
+    overflow-y: clip;
   }
 
   .head {
@@ -1016,6 +1085,9 @@
     box-shadow: inset 0 0 0 2px var(--cursor);
     transition: transform 70ms var(--ease-out), width 70ms var(--ease-out), height 70ms var(--ease-out);
     will-change: transform;
+  }
+  .cursor.still {
+    transition: none;
   }
   .cursor.editing {
     box-shadow: inset 0 0 0 2px var(--accent);
