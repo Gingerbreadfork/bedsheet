@@ -673,7 +673,7 @@ export class AppState {
       this.pasteIntoBlank(block, header);
       return;
     }
-    const placed = header !== false && block.length > 1 ? this.placeHeader(block, c0, header === true && !g.viewRows) : null;
+    const placed = header === true && block.length > 1 ? this.placeHeader(block, c0, !g.viewRows) : null;
     if (placed) block = block.slice(1);
     const names = placed?.names;
     const blockCols = blockWidth(block);
@@ -713,9 +713,9 @@ export class AppState {
   }
 
   /**
-   * Works out whether the block's first row belongs in the header. It does when it repeats the names
-   * of the columns it lands in, or, if `mayName`, when those columns are new or unused and can take
-   * its names. Returns the names to give them, or null when the row should be pasted as data.
+   * Places a header row the source marked as one. It is left out when it repeats the names of the
+   * columns it lands in, and if `mayName` it names columns that are new or unused. Returns the names
+   * to give them, or null when the row should be pasted as data.
    */
   private placeHeader(block: string[][], c0: number, mayName: boolean): { names?: (string | undefined)[] } | null {
     const doc = this.doc;

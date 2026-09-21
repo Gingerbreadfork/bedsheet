@@ -211,11 +211,21 @@ describe('clipboard', () => {
     expect(app.doc.rows).toEqual([['Alice', 'Paris'], ['Bob', 'Rome']]);
   });
 
-  it('leaves out a pasted header row that repeats the column names', () => {
+  it('leaves out a marked header row that repeats the column names', () => {
+    load('Name,Email\nc,c@x\nd,d@x\n');
+    app.grid.selectAll();
+    const { text } = app.selectionClip(true);
     load('name,email\na,a@x\nb,b@x\n');
     app.grid.select(1, 0, false);
-    app.pasteText('Name\tEmail\nc\tc@x\nd\td@x');
+    app.pasteText(text);
     expect(app.doc.rows).toEqual([['a', 'a@x'], ['c', 'c@x'], ['d', 'd@x']]);
+  });
+
+  it('keeps an unmarked row that repeats the column names', () => {
+    load('x,y\n1,2\n5,6\n');
+    app.grid.select(1, 0, false);
+    app.pasteText('x\ty\n3\t4');
+    expect(app.doc.rows).toEqual([['1', '2'], ['x', 'y'], ['3', '4']]);
   });
 
   it('pastes a first row that names other columns as data', () => {
@@ -236,6 +246,19 @@ describe('clipboard', () => {
     app.undo();
     expect(app.doc.columns).toEqual(['name', 'Column 2']);
     expect(app.doc.rows).toEqual([['a', ''], ['b', '']]);
+  });
+
+  it('pastes under a matching marked header in a filtered view without naming columns', () => {
+    load('name,email\nsrc,src@x\nb,b@x\n');
+    app.grid.select(0, 0, false);
+    app.grid.extendTo(0, 1, false);
+    const { text } = app.selectionClip(true);
+    find('b@');
+    app.toggleFilterRows();
+    app.grid.select(0, 0, false);
+    app.pasteText(text);
+    expect(app.doc.columns).toEqual(['name', 'email']);
+    expect(app.doc.rows).toEqual([['src', 'src@x'], ['src', 'src@x']]);
   });
 
   it('starts a sheet from the clipboard when no file is open', async () => {
