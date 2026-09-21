@@ -167,6 +167,8 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 - Paste a single value into a multi-cell selection and it fills every cell. Paste a block
   into a selection it divides evenly and it repeats to fill it.
 - Paste a block bigger than the sheet and the sheet grows to fit.
+- Name a column in a sheet without a header row and it gets one. The other columns keep their
+  letters as names until you rename them.
 - With "only matching rows" on, row numbers stay the real row numbers from the file.
 - The delimiter and encoding chips in the status bar switch how the file is read, or, once
   you've made edits, how it will be saved.

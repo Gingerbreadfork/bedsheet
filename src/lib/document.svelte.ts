@@ -460,7 +460,27 @@ export class Doc {
     return true;
   }
 
+  /** Renames a column. A sheet without a header row gets one, its other columns named by their letters. */
   renameColumn(c: number, name: string): void {
+    if (!this.hasHeader) {
+      const letters = this.columns.map((_, i) => columnLetter(i));
+      const named = letters.map((letter, i) => (i === c ? name : letter));
+      this.exec(
+        {
+          label: 'Name column',
+          redo: () => {
+            this.columns = named;
+            this.hasHeader = true;
+          },
+          undo: () => {
+            this.columns = letters;
+            this.hasHeader = false;
+          },
+        },
+        'structure',
+      );
+      return;
+    }
     const prev = this.columns[c];
     if (prev === name) return;
     this.exec(

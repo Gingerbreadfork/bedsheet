@@ -393,7 +393,7 @@
         commitHeader();
         if (e.shiftKey) grid.selectCols(grid.anchor.c, hit.c);
         else grid.selectCols(hit.c, hit.c);
-        grid.inHeader = doc.hasHeader;
+        grid.inHeader = true;
         drag = { kind: 'cols' };
         break;
       case 'gutter':
@@ -496,7 +496,7 @@
     if (hit.kind === 'cell') {
       grid.select(hit.r, hit.c, false);
       grid.startEdit('edit');
-    } else if (hit.kind === 'header' && doc.hasHeader) {
+    } else if (hit.kind === 'header') {
       grid.inHeader = true;
       grid.editingHeader = hit.c;
     }
@@ -570,9 +570,8 @@
       { label: 'Sort ascending', run: () => app.sort('asc') },
       { label: 'Sort descending', run: () => app.sort('desc') },
       'sep',
-      doc.hasHeader
-        ? { label: 'Rename column', run: () => (grid.editingHeader = c) }
-        : { label: 'Use first row as header', run: () => app.toggleHeader() },
+      { label: 'Rename column', run: () => (grid.editingHeader = c) },
+      ...(doc.hasHeader ? [] : [{ label: 'Use first row as header', run: () => app.toggleHeader() }]),
       { label: 'Fit width to content', run: () => app.autoFit?.(grid.selectedColIndices) },
       { label: 'Copy', shortcut: 'Ctrl+C', run: () => app.copy() },
       'sep',
@@ -633,7 +632,7 @@
   }
 
   $effect(() => {
-    if (grid.inHeader && (!doc.hasHeader || (rowCount > 0 && !fullCols))) grid.inHeader = false;
+    if (grid.inHeader && rowCount > 0 && !fullCols) grid.inHeader = false;
   });
 
   /** Starts an edit with text that reached the proxy: a finished composition, an emoji picker, and so on. */
@@ -662,7 +661,7 @@
     }
     const ctrl = e.ctrlKey;
     const shift = e.shiftKey;
-    if (e.key === 'ArrowUp' && !ctrl && !shift && doc.hasHeader && (rowCount === 0 || grid.anchor.r === 0)) {
+    if (e.key === 'ArrowUp' && !ctrl && !shift && (rowCount === 0 || grid.anchor.r === 0)) {
       grid.selectCols(grid.anchor.c, grid.anchor.c);
       grid.inHeader = true;
       e.preventDefault();
@@ -766,10 +765,10 @@
   function commitHeader(): void {
     const c = grid.editingHeader;
     if (c === null) return;
-    const value = headerInput?.value ?? doc.columns[c];
+    const value = headerInput?.value ?? doc.columnLabel(c);
     grid.editingHeader = null;
     grid.headerDraft = null;
-    if (value.trim() !== '' && value !== doc.columns[c]) {
+    if (value.trim() !== '' && value !== doc.columnLabel(c)) {
       doc.renameColumn(c, value);
       grid.widths[c] = Math.max(grid.widths[c] ?? 0, fitColumn(c));
     }
@@ -867,7 +866,7 @@
             <input
               class="hinput"
               bind:this={headerInput}
-              value={grid.headerDraft ?? doc.columns[c]}
+              value={grid.headerDraft ?? headers[c]}
               spellcheck="false"
               onkeydown={onHeaderKey}
               onblur={commitHeader}

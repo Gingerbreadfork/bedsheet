@@ -116,6 +116,30 @@ describe('setHasHeader', () => {
   });
 });
 
+describe('renameColumn', () => {
+  it('gives a sheet without a header row one, keeping the data rows', () => {
+    const d = load('1,2,3\n4,5,6\n');
+    expect(d.hasHeader).toBe(false);
+    d.renameColumn(1, 'Price');
+    expect(d.hasHeader).toBe(true);
+    expect(d.columns).toEqual(['A', 'Price', 'C']);
+    expect(d.rows).toEqual([['1', '2', '3'], ['4', '5', '6']]);
+    expect(d.toText()).toBe('A,Price,C\n1,2,3\n4,5,6\n');
+    d.undo();
+    expect(d.hasHeader).toBe(false);
+    expect(d.toText()).toBe('1,2,3\n4,5,6\n');
+    d.redo();
+    expect(d.columns).toEqual(['A', 'Price', 'C']);
+  });
+
+  it('letters the other columns by where they are now', () => {
+    const d = load('1,2\n3,4\n');
+    d.insertColumn(0);
+    d.renameColumn(2, 'Last');
+    expect(d.columns).toEqual(['A', 'B', 'Last']);
+  });
+});
+
 describe('loadText', () => {
   it('uses the first row as the header when it reads like one', () => {
     const d = load('id,name\n1,ann\n2,bob\n');

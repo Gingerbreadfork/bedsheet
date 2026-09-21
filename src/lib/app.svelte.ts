@@ -1320,7 +1320,7 @@ export class AppState {
       { id: 'cols.delete', title: () => (this.grid.range.c1 > this.grid.range.c0 ? 'Delete selected columns' : 'Delete column'), group: 'Columns', when: loaded, run: () => this.deleteColumns() },
       { id: 'cols.moveLeft', title: 'Move columns left', group: 'Columns', shortcut: 'Alt+ArrowLeft', when: hasRows, run: () => this.moveColumns(-1) },
       { id: 'cols.moveRight', title: 'Move columns right', group: 'Columns', shortcut: 'Alt+ArrowRight', when: hasRows, run: () => this.moveColumns(1) },
-      { id: 'cols.rename', title: 'Rename column', group: 'Columns', when: () => this.doc.loaded && this.doc.hasHeader, run: () => (this.grid.editingHeader = this.grid.anchor.c) },
+      { id: 'cols.rename', title: 'Rename column', group: 'Columns', when: loaded, run: () => (this.grid.editingHeader = this.grid.anchor.c) },
       { id: 'cols.sortAsc', title: 'Sort ascending', group: 'Columns', when: hasRows, run: () => this.sort('asc') },
       { id: 'cols.sortDesc', title: 'Sort descending', group: 'Columns', when: hasRows, run: () => this.sort('desc') },
       { id: 'cols.fit', title: 'Fit column widths to content', group: 'Columns', when: loaded, run: () => this.autoFit?.('all') },
