@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
   import { app, type MenuItem } from '../lib/app.svelte';
   import { cellKey, MIN_COL_WIDTH, MAX_COL_WIDTH, DEFAULT_COL_WIDTH, type Pos } from '../lib/grid.svelte';
   import { inferAllColumnTypes } from '../lib/infer';
@@ -205,7 +205,11 @@
     }
   });
 
-  app.autoFit = (cols, widen) => {
+  onDestroy(() => {
+    if (app.autoFit === autoFit) app.autoFit = null;
+  });
+
+  function autoFit(cols: number[] | 'all', widen?: { r0: number; r1: number }): void {
     if (cols === 'all') return fitAll();
     const next = grid.widths.slice(0, colCount);
     while (next.length < colCount) next.push(fitColumn(next.length));
@@ -213,7 +217,8 @@
       if (c < colCount) next[c] = widen ? Math.max(next[c], fitColumn(c, widen)) : fitColumn(c);
     }
     grid.widths = next;
-  };
+  }
+  app.autoFit = autoFit;
 
   let expectedScrollTop = 0;
 
