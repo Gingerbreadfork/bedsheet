@@ -128,6 +128,25 @@ describe('column widths', () => {
   });
 });
 
+describe('undo and redo', () => {
+  it('name what they would take back', () => {
+    load('h\na\n');
+    expect(app.undoTitle('undo')).toBe('Undo');
+    app.doc.setCell(0, 0, 'b');
+    expect(app.undoTitle('undo')).toBe('Undo edit cell');
+    app.undo();
+    expect(app.undoTitle('undo')).toBe('Undo');
+    expect(app.undoTitle('redo')).toBe('Redo edit cell');
+    expect(app.commands.find((c) => c.id === 'edit.undo')?.when?.()).toBe(true);
+  });
+
+  it('say when there is nothing to undo', () => {
+    load('h\na\n');
+    app.undo();
+    expect(app.toasts.at(-1)?.text).toBe('Nothing to undo');
+  });
+});
+
 describe('clipboard', () => {
   it('pastes a copied multi-line cell back as one cell', () => {
     load('h\n"line1\nline2"\nplain\n');

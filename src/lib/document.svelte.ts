@@ -88,6 +88,15 @@ export class Doc {
     return this.rows.length;
   }
 
+  /** What undo would take back, or null when there is nothing to undo. */
+  get undoLabel(): string | null {
+    return this.undoStack[this.undoStack.length - 1]?.label ?? null;
+  }
+
+  get redoLabel(): string | null {
+    return this.redoStack[this.redoStack.length - 1]?.label ?? null;
+  }
+
   get colCount(): number {
     return this.columns.length;
   }

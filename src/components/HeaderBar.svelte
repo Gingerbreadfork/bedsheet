@@ -15,6 +15,9 @@
       { label: 'Save as…', shortcut: 'Ctrl+Shift+S', disabled: !doc.loaded, run: () => app.save(true) },
       { label: 'Close file', shortcut: 'Ctrl+W', disabled: !doc.loaded, run: () => app.closeFile() },
       'sep',
+      { label: app.undoTitle('undo'), shortcut: 'Ctrl+Z', disabled: !doc.canUndo, run: () => app.undo() },
+      { label: app.undoTitle('redo'), shortcut: 'Ctrl+Shift+Z', disabled: !doc.canRedo, run: () => app.redo() },
+      'sep',
       { label: 'Find', shortcut: 'Ctrl+F', disabled: !doc.loaded, run: () => app.openFind(false) },
       { label: 'Find and replace', shortcut: 'Ctrl+H', disabled: !doc.loaded, run: () => app.openFind(true) },
       'sep',
@@ -41,10 +44,10 @@
       </svg>
     </div>
     <div class="group">
-      <button class="icon-btn" title="Undo (Ctrl+Z)" disabled={!doc.canUndo} onclick={() => app.undo()}>
+      <button class="icon-btn" title="{app.undoTitle('undo')} (Ctrl+Z)" disabled={!doc.canUndo} onclick={() => app.undo()}>
         <Icon name="undo" />
       </button>
-      <button class="icon-btn" title="Redo (Ctrl+Shift+Z)" disabled={!doc.canRedo} onclick={() => app.redo()}>
+      <button class="icon-btn" title="{app.undoTitle('redo')} (Ctrl+Shift+Z)" disabled={!doc.canRedo} onclick={() => app.redo()}>
         <Icon name="redo" />
       </button>
     </div>

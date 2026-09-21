@@ -552,13 +552,21 @@ export class AppState {
   undo(): void {
     this.commitPending();
     const label = this.doc.undo();
-    if (label) this.toast(`Undid: ${label}`);
+    this.toast(label ? `Undid: ${label}` : 'Nothing to undo');
   }
 
   redo(): void {
     this.commitPending();
     const label = this.doc.redo();
-    if (label) this.toast(`Redid: ${label}`);
+    this.toast(label ? `Redid: ${label}` : 'Nothing to redo');
+  }
+
+  /** "Undo" or "Redo", followed by what it would do when there is something to do. */
+  undoTitle(which: 'undo' | 'redo'): string {
+    void this.doc.rev;
+    const label = which === 'undo' ? this.doc.undoLabel : this.doc.redoLabel;
+    const verb = which === 'undo' ? 'Undo' : 'Redo';
+    return label ? `${verb} ${label.charAt(0).toLowerCase()}${label.slice(1)}` : verb;
   }
 
   /** False when there is nothing to select: no file, no rows, or a filter that matches none. */
@@ -1296,8 +1304,8 @@ export class AppState {
       { id: 'file.close', title: 'Close file', group: 'File', shortcut: 'Ctrl+W', global: true, when: loaded, run: () => this.closeFile() },
       ...(isTauri ? [{ id: 'file.quit', title: 'Quit', group: 'File' as Group, shortcut: 'Ctrl+Q', global: true, run: () => this.quit() }] : []),
 
-      { id: 'edit.undo', title: 'Undo', group: 'Edit', shortcut: 'Ctrl+Z', when: () => this.doc.canUndo, run: () => this.undo() },
-      { id: 'edit.redo', title: 'Redo', group: 'Edit', shortcut: 'Ctrl+Shift+Z', altShortcuts: ['Ctrl+Y'], when: () => this.doc.canRedo, run: () => this.redo() },
+      { id: 'edit.undo', title: () => this.undoTitle('undo'), group: 'Edit', shortcut: 'Ctrl+Z', when: loaded, run: () => this.undo() },
+      { id: 'edit.redo', title: () => this.undoTitle('redo'), group: 'Edit', shortcut: 'Ctrl+Shift+Z', altShortcuts: ['Ctrl+Y'], when: loaded, run: () => this.redo() },
       { id: 'edit.cut', title: 'Cut', group: 'Edit', shortcut: 'Ctrl+X', nativeKey: true, when: hasRows, run: () => this.cut() },
       { id: 'edit.copy', title: 'Copy', group: 'Edit', shortcut: 'Ctrl+C', nativeKey: true, when: hasRows, run: () => this.copy() },
       { id: 'edit.paste', title: () => (this.doc.loaded ? 'Paste' : 'New sheet from clipboard'), group: 'Edit', shortcut: 'Ctrl+V', nativeKey: true, run: () => this.paste() },
