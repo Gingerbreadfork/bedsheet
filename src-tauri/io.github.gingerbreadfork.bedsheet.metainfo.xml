@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.gingerbreadfork.bedsheet</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Bedsheet</name>
+  <summary>A focused CSV editor</summary>
+  <developer id="io.github.gingerbreadfork">
+    <name>Gingerbreadfork</name>
+  </developer>
+  <description>
+    <p>
+      Bedsheet is a fast, focused editor for CSV and other delimited text files. It opens a file
+      instantly, gets out of your way, and writes it back the way it came in.
+    </p>
+    <ul>
+      <li>Reads CSV, TSV, semicolons, pipes or any single character, and detects the encoding and line endings</li>
+      <li>Stays smooth on files with hundreds of thousands of rows</li>
+      <li>Copies and pastes tables to and from documents and other spreadsheets</li>
+      <li>Finds and replaces with regular expressions, sorts by type, and undoes every change</li>
+      <li>Keeps a file's quoting, line endings and encoding when it saves</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">Bedsheet.desktop</launchable>
+  <icon type="stock">bedsheet</icon>
+  <categories>
+    <category>Utility</category>
+    <category>Office</category>
+  </categories>
+  <url type="homepage">https://github.com/Gingerbreadfork/bedsheet</url>
+  <url type="bugtracker">https://github.com/Gingerbreadfork/bedsheet/issues</url>
+  <url type="vcs-browser">https://github.com/Gingerbreadfork/bedsheet</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>A block of numbers selected, with their sum, average and count</caption>
+      <image>https://raw.githubusercontent.com/Gingerbreadfork/bedsheet/main/docs/screenshot-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Find and replace, showing only the matching rows</caption>
+      <image>https://raw.githubusercontent.com/Gingerbreadfork/bedsheet/main/docs/find.png</image>
+    </screenshot>
+  </screenshots>
+  <provides>
+    <binary>bedsheet</binary>
+    <mediatype>text/csv</mediatype>
+    <mediatype>text/tab-separated-values</mediatype>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.2.1" date="2026-09-21"/>
+    <release version="0.2.0" date="2026-09-21"/>
+    <release version="0.1.0" date="2026-09-14"/>
+  </releases>
+</component>

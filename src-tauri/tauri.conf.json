@@ -48,8 +48,10 @@
     "longDescription": "Bedsheet is a fast, focused editor and reader for CSV and other delimited text files.",
     "icon": [
       "icons/32x32.png",
+      "icons/64x64.png",
       "icons/128x128.png",
-      "icons/128x128@2x.png",
+      "icons/256x256.png",
+      "icons/icon.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ],
@@ -66,10 +68,21 @@
     ],
     "linux": {
       "deb": {
-        "desktopTemplate": "bedsheet.desktop"
+        "desktopTemplate": "bedsheet.desktop",
+        "files": {
+          "/usr/share/metainfo/io.github.gingerbreadfork.bedsheet.metainfo.xml": "io.github.gingerbreadfork.bedsheet.metainfo.xml"
+        }
       },
       "rpm": {
-        "desktopTemplate": "bedsheet.desktop"
+        "desktopTemplate": "bedsheet.desktop",
+        "files": {
+          "/usr/share/metainfo/io.github.gingerbreadfork.bedsheet.metainfo.xml": "io.github.gingerbreadfork.bedsheet.metainfo.xml"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/metainfo/io.github.gingerbreadfork.bedsheet.metainfo.xml": "io.github.gingerbreadfork.bedsheet.metainfo.xml"
+        }
       }
     }
   }
