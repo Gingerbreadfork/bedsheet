@@ -263,9 +263,15 @@ describe('clipboard', () => {
     app.pasteText(text);
     expect(app.doc.columns).toEqual(['name', 'email', 'phone']);
     expect(app.doc.rows).toEqual([['a', 'x@y', '123'], ['b', 'z@w', '456']]);
+    app.doc.setCell(0, 2, '999');
+    app.undo();
     app.undo();
     expect(app.doc.columns).toEqual(['name', 'Column 2']);
     expect(app.doc.rows).toEqual([['a', ''], ['b', '']]);
+    app.redo();
+    app.redo();
+    expect(app.doc.columns).toEqual(['name', 'email', 'phone']);
+    expect(app.doc.rows).toEqual([['a', 'x@y', '999'], ['b', 'z@w', '456']]);
   });
 
   it('does nothing when a filter hides every row', () => {
@@ -289,6 +295,16 @@ describe('clipboard', () => {
     app.pasteText(text);
     expect(app.doc.columns).toEqual(['name', 'email']);
     expect(app.doc.rows).toEqual([['src', 'src@x'], ['src', 'src@x']]);
+  });
+
+  it('widens the columns a paste lands in, measuring the pasted rows', () => {
+    load('a,b,c\n1,2,3\n4,5,6\n7,8,9\n');
+    const fit = vi.fn();
+    app.autoFit = fit;
+    app.grid.select(1, 1, false);
+    app.pasteText('x\ty\nz\tw');
+    expect(fit).toHaveBeenCalledWith([1, 2], { r0: 1, r1: 2 });
+    app.autoFit = null;
   });
 
   it('does not paste over a file that opened while the clipboard was read', async () => {
