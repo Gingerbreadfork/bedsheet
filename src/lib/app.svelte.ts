@@ -1,6 +1,6 @@
 import { Doc } from './document.svelte';
 import { GridState, cellKey, DEFAULT_COL_WIDTH, type Pos } from './grid.svelte';
-import { serializeCsv, columnLetter, DELIMITERS, delimiterLabel } from './csv';
+import { serializeCsv, columnLetter, blockWidth, DELIMITERS, delimiterLabel } from './csv';
 import { readClipboard, toHtmlTable, HTML_MAX_CELLS, type ClipBlock } from './clipboard';
 import { looksLikeHeader } from './infer';
 import { decodeBytes, encodeText, ENCODINGS } from './encoding';
@@ -119,7 +119,6 @@ const nextFrame = (): Promise<void> =>
   });
 let toastId = 0;
 const sameText = (a: string, b: string): boolean => a.replaceAll('\r\n', '\n') === b.replaceAll('\r\n', '\n');
-const widthOf = (block: string[][]): number => block.reduce((m, r) => Math.max(m, r.length), 0);
 const sameName = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
 const PASTE_KEY = parseShortcut('Ctrl+V');
 
@@ -599,10 +598,6 @@ export class AppState {
     return { text, html };
   }
 
-  selectionText(): string {
-    return this.selectionClip().text;
-  }
-
   async copy(): Promise<void> {
     if (!this.hasCells) return;
     this.commitPending();
@@ -681,7 +676,7 @@ export class AppState {
     const placed = header !== false && block.length > 1 ? this.placeHeader(block, c0, header === true && !g.viewRows) : null;
     if (placed) block = block.slice(1);
     const names = placed?.names;
-    const blockCols = widthOf(block);
+    const blockCols = blockWidth(block);
     const selRows = r1 - r0 + 1;
     const selCols = c1 - c0 + 1;
     const tiles = !names && (selRows > block.length || selCols > blockCols) && selRows % block.length === 0 && selCols % blockCols === 0;
@@ -728,7 +723,7 @@ export class AppState {
     const first = block[0];
     const names: (string | undefined)[] = [];
     let renamed = false;
-    for (let j = 0; j < widthOf(block); j++) {
+    for (let j = 0; j < blockWidth(block); j++) {
       const c = c0 + j;
       const name = first[j] ?? '';
       if (c < doc.colCount && sameName(name, doc.columns[c])) {
@@ -745,7 +740,7 @@ export class AppState {
 
   /** A blank sheet becomes the pasted table, with its first row as the header when it reads as one. */
   private pasteIntoBlank(block: string[][], header: boolean | null): void {
-    const width = widthOf(block);
+    const width = blockWidth(block);
     const rows = block.map((row) => Array.from({ length: width }, (_, c) => row[c] ?? ''));
     const guessed = header === null && rows.length > 1 && looksLikeHeader(rows);
     const named = header === true || guessed;

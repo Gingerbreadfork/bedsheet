@@ -79,7 +79,7 @@ describe('a filter that matches nothing', () => {
     app.clearSelection();
     app.deleteRows();
     app.fillDown();
-    expect(app.selectionText()).toBe('');
+    expect(app.selectionClip().text).toBe('');
     expect(column()).toEqual(['alpha', 'beta']);
   });
 
@@ -127,7 +127,7 @@ describe('clipboard', () => {
   it('pastes a copied multi-line cell back as one cell', () => {
     load('h\n"line1\nline2"\nplain\n');
     app.grid.select(0, 0, false);
-    const text = app.selectionText();
+    const text = app.selectionClip().text;
     expect(text).toBe('line1\nline2');
     app.grid.select(1, 0, false);
     app.pasteText(text);
@@ -144,7 +144,7 @@ describe('clipboard', () => {
   it('round-trips a block with tabs, quotes and line breaks', () => {
     load('a,b\n"t\tab","say ""hi"""\n"two\nlines",plain\n');
     app.grid.selectAll();
-    const text = app.selectionText();
+    const text = app.selectionClip().text;
     app.doc.clearRange(0, 0, 1, 1);
     app.grid.select(0, 0, false);
     app.pasteText(text);
@@ -193,7 +193,7 @@ describe('clipboard', () => {
   it('never takes a plain copy for a header', () => {
     load('name,city\nAlice,Paris\nBob,Rome\n');
     app.grid.selectAll();
-    const text = app.selectionText();
+    const text = app.selectionClip().text;
     blank();
     app.pasteText(text);
     expect(app.doc.hasHeader).toBe(false);

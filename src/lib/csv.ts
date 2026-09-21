@@ -299,6 +299,11 @@ export function parseClipboardBlock(text: string): string[][] {
   return [[trimmed]];
 }
 
+/** The widest row's length. */
+export function blockWidth(rows: readonly (readonly string[])[]): number {
+  return rows.reduce((m, r) => Math.max(m, r.length), 0);
+}
+
 export function columnLetter(index: number): string {
   let s = '';
   let n = index;

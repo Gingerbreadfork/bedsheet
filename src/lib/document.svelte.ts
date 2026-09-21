@@ -1,4 +1,4 @@
-import { parseCsv, serializeCsv, detectDelimiter, columnLetter, MINIMAL_QUOTING, type LineEnding, type Quoting } from './csv';
+import { parseCsv, serializeCsv, detectDelimiter, columnLetter, blockWidth, MINIMAL_QUOTING, type LineEnding, type Quoting } from './csv';
 import { inferColumnType, toNumber, toTimestamp, detectDateOrder, looksLikeHeader } from './infer';
 
 export interface Command {
@@ -275,7 +275,7 @@ export class Doc {
    */
   applyBlock(r0: number, c0: number, block: string[][], label = 'Paste', names?: (string | undefined)[]): { rows: number; cols: number } {
     const blockRows = block.length;
-    const blockCols = block.reduce((m, r) => Math.max(m, r.length), 0);
+    const blockCols = blockWidth(block);
     const addRows = Math.max(0, r0 + blockRows - this.rows.length);
     const addCols = Math.max(0, c0 + blockCols - this.columns.length);
     const prev: CellEdit[] = [];

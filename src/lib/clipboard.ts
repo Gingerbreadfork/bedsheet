@@ -1,4 +1,4 @@
-import { parseClipboardBlock } from './csv';
+import { parseClipboardBlock, blockWidth } from './csv';
 
 /** A block of cells from the clipboard. `header` is true when the source marked its first row as column names. */
 export interface ClipBlock {
@@ -142,7 +142,7 @@ export function parseHtmlTable(html: string): ClipBlock | null {
       c += colSpan;
     }
   });
-  const width = grid.reduce((m, row) => Math.max(m, row.length), 0);
+  const width = blockWidth(grid);
   if (width === 0) return null;
   const rows = grid.map((row) => Array.from({ length: width }, (_, c) => row[c] ?? ''));
 
@@ -160,8 +160,6 @@ export function parseHtmlTable(html: string): ClipBlock | null {
   return { rows, header: marked ? true : null };
 }
 
-const widthOf = (rows: string[][]): number => rows.reduce((m, r) => Math.max(m, r.length), 0);
-
 /**
  * Reads pasted clipboard contents into cells, or null when there is nothing to paste. A table in the
  * HTML wins when the plain text doesn't split into the same shape, as with tables copied out of
@@ -171,7 +169,7 @@ export function readClipboard(text: string, html: string | null): ClipBlock | nu
   const table = html ? parseHtmlTable(html) : null;
   const plain = text ? parseClipboardBlock(text) : null;
   if (!table) return plain && { rows: plain, header: null };
-  if (plain && plain.length === table.rows.length && widthOf(plain) === widthOf(table.rows)) {
+  if (plain && plain.length === table.rows.length && blockWidth(plain) === blockWidth(table.rows)) {
     return { rows: plain, header: table.header };
   }
   return table;
