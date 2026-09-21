@@ -1,6 +1,6 @@
 import { Doc } from './document.svelte';
 import { GridState, cellKey, DEFAULT_COL_WIDTH, type Pos } from './grid.svelte';
-import { serializeCsv, columnLetter, blockWidth, DELIMITERS, delimiterLabel } from './csv';
+import { serializeCsv, columnLetter, blockWidth, isLettering, DELIMITERS, delimiterLabel } from './csv';
 import { readClipboard, toHtmlTable, HTML_MAX_CELLS, type ClipBlock } from './clipboard';
 import { looksLikeHeader, clearlyHeader } from './infer';
 import { decodeBytes, encodeText, ENCODINGS } from './encoding';
@@ -713,22 +713,22 @@ export class AppState {
   }
 
   /**
-   * Places a header row the source marked as one. It is left out when it repeats the names of the
-   * columns it lands in, and if `mayName` it names columns that are new or unused. Returns the names
-   * to give them, or null when the row should be pasted as data.
+   * Places a header row the source marked as one. It is left out when it repeats the labels of the
+   * columns it lands in or is only Bedsheet's column letters, and if `mayName` it names columns that
+   * are new or unused. Returns the names to give them, or null when the row should be pasted as data.
    */
   private placeHeader(block: string[][], c0: number, mayName: boolean): { names?: (string | undefined)[] } | null {
     const doc = this.doc;
-    if (!doc.hasHeader) return null;
     const first = block[0];
+    if (isLettering(first)) return {};
     const names: (string | undefined)[] = [];
     let renamed = false;
     for (let j = 0; j < blockWidth(block); j++) {
       const c = c0 + j;
       const name = first[j] ?? '';
-      if (c < doc.colCount && sameName(name, doc.columns[c])) {
+      if (c < doc.colCount && sameName(name, doc.columnLabel(c))) {
         names.push(undefined);
-      } else if (mayName && (c >= doc.colCount || (doc.hasGeneratedName(c) && doc.isColumnEmpty(c)))) {
+      } else if (mayName && doc.hasHeader && (c >= doc.colCount || (doc.hasGeneratedName(c) && doc.isColumnEmpty(c)))) {
         names.push(name === '' ? undefined : name);
         renamed = true;
       } else {
@@ -738,12 +738,17 @@ export class AppState {
     return renamed ? { names } : {};
   }
 
-  /** A blank sheet becomes the pasted table. Its first row becomes the header when the source marked it as one, or when it plainly reads as one. */
+  /**
+   * A blank sheet becomes the pasted table. Its first row becomes the header when the source marked
+   * it as one, or when it plainly reads as one; Bedsheet's own column letters are dropped instead.
+   */
   private pasteIntoBlank(block: string[][], header: boolean | null): void {
     const width = blockWidth(block);
     const rows = block.map((row) => Array.from({ length: width }, (_, c) => row[c] ?? ''));
     const guessed = header === null && clearlyHeader(rows);
-    const named = header === true || guessed;
+    const lettered = header === true && rows.length > 1 && isLettering(rows[0]);
+    if (lettered) rows.shift();
+    const named = (header === true && !lettered) || guessed;
     const columns = named ? rows.shift()! : Array.from({ length: width }, (_, c) => columnLetter(c));
     this.doc.setContents(columns, rows, named, 'Paste');
     this.grid.select(0, 0, false);

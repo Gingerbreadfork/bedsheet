@@ -313,3 +313,17 @@ export function columnLetter(index: number): string {
   } while (n >= 0);
   return s;
 }
+
+/** The index `columnLetter` gives `label`, or -1 when it isn't a column letter. */
+export function columnIndex(label: string): number {
+  if (!/^[A-Z]{1,4}$/.test(label)) return -1;
+  let n = 0;
+  for (let i = 0; i < label.length; i++) n = n * 26 + (label.charCodeAt(i) - 64);
+  return n - 1;
+}
+
+/** Whether `names` are consecutive column letters, as a sheet without a header row labels its columns. */
+export function isLettering(names: readonly string[]): boolean {
+  const start = columnIndex(names[0] ?? '');
+  return start >= 0 && names.every((name, i) => name === columnLetter(start + i));
+}

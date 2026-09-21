@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCsv, serializeCsv, detectDelimiter, parseClipboardBlock, columnLetter } from './csv';
+import { parseCsv, serializeCsv, detectDelimiter, parseClipboardBlock, columnLetter, columnIndex, isLettering } from './csv';
 
 describe('parseCsv', () => {
   it('parses simple rows', () => {
@@ -117,5 +117,21 @@ describe('round trip', () => {
     const p = parseCsv('a,b\r1,2\r', ',');
     expect(p.lineEnding).toBe('\r');
     expect(roundTrip('a,b\r1,2\r')).toBe('a,b\r1,2\r');
+  });
+});
+
+describe('column letters', () => {
+  it('reads a letter back to its index', () => {
+    for (const i of [0, 25, 26, 701, 702, 18277]) expect(columnIndex(columnLetter(i))).toBe(i);
+    expect(columnIndex('a')).toBe(-1);
+    expect(columnIndex('Name')).toBe(-1);
+  });
+
+  it('tells lettering from names', () => {
+    expect(isLettering(['B', 'C', 'D'])).toBe(true);
+    expect(isLettering(['Z', 'AA'])).toBe(true);
+    expect(isLettering(['A', 'C'])).toBe(false);
+    expect(isLettering(['ID', 'Name'])).toBe(false);
+    expect(isLettering([])).toBe(false);
   });
 });

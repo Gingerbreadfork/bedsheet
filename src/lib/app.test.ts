@@ -175,6 +175,21 @@ describe('clipboard', () => {
     expect(app.doc.rows).toEqual([['Name', 'City'], ['Alice', 'Paris']]);
   });
 
+  it('drops the column letters of a copy with headers from a sheet without names', () => {
+    load('1,2\n3,4\n');
+    expect(app.doc.hasHeader).toBe(false);
+    app.grid.selectAll();
+    const { text } = app.selectionClip(true);
+    blank();
+    app.pasteText(text);
+    expect(app.doc.hasHeader).toBe(false);
+    expect(app.doc.rows).toEqual([['1', '2'], ['3', '4']]);
+    load('5,6\n7,8\n');
+    app.grid.select(1, 0, false);
+    app.pasteText(text);
+    expect(app.doc.rows).toEqual([['5', '6'], ['1', '2'], ['3', '4']]);
+  });
+
   it('keeps a first row of plain data in a blank sheet', () => {
     blank();
     app.pasteText('1\t2\n3\t4');
