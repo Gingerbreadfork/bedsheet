@@ -263,6 +263,16 @@ describe('clipboard', () => {
     expect(app.doc.rows).toEqual([['a', ''], ['b', '']]);
   });
 
+  it('does nothing when a filter hides every row', () => {
+    load('h\nalpha\nbeta\n');
+    find('alpha');
+    app.toggleFilterRows();
+    find('zzz');
+    app.pasteText('x\ty\nz\tw');
+    expect(column()).toEqual(['alpha', 'beta']);
+    expect(app.toasts.at(-1)?.text).toBe('No rows are showing to paste into');
+  });
+
   it('pastes under a matching marked header in a filtered view without naming columns', () => {
     load('name,email\nsrc,src@x\nb,b@x\n');
     app.grid.select(0, 0, false);

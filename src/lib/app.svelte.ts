@@ -660,6 +660,10 @@ export class AppState {
   private pasteBlock({ rows, header }: ClipBlock): void {
     const g = this.grid;
     const { r0, c0, r1, c1 } = g.range;
+    if (g.viewRows && g.rowCount === 0) {
+      this.toast('No rows are showing to paste into');
+      return;
+    }
     let block = rows;
     const single = block.length === 1 && block[0].length === 1;
     if (single && !g.isSingle) {
