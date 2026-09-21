@@ -144,7 +144,8 @@
     if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
     return measureCtx ? measureCtx.measureText(text).width : text.length * 7;
   }
-  function fitColumn(c: number): number {
+  /** The width that shows column `c`, sampling long sheets. `also` adds a span of rows that must be measured. */
+  function fitColumn(c: number, also?: { r0: number; r1: number }): number {
     if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
     if (!measureCtx) return DEFAULT_COL_WIDTH;
     measureCtx.font = cellFont(500);
@@ -160,6 +161,13 @@
     if (n > dense) {
       const step = Math.max(1, Math.floor((n - dense) / 300));
       for (let r = dense; r < n; r += step) {
+        const v = rows[r][c];
+        if (v) w = Math.max(w, measure(v.length > 120 ? v.slice(0, 120) : v));
+      }
+    }
+    if (also) {
+      const step = Math.max(1, Math.floor((also.r1 - also.r0 + 1) / 500));
+      for (let r = Math.max(also.r0, dense); r <= also.r1 && r < n; r += step) {
         const v = rows[r][c];
         if (v) w = Math.max(w, measure(v.length > 120 ? v.slice(0, 120) : v));
       }
@@ -197,9 +205,14 @@
     }
   });
 
-  app.autoFit = (cols) => {
-    if (cols === 'all') fitAll();
-    else for (const c of cols) grid.widths[c] = fitColumn(c);
+  app.autoFit = (cols, widen) => {
+    if (cols === 'all') return fitAll();
+    const next = grid.widths.slice(0, colCount);
+    while (next.length < colCount) next.push(fitColumn(next.length));
+    for (const c of cols) {
+      if (c < colCount) next[c] = widen ? Math.max(next[c], fitColumn(c, widen)) : fitColumn(c);
+    }
+    grid.widths = next;
   };
 
   let expectedScrollTop = 0;
@@ -713,10 +726,16 @@
     }
   }
 
+  function putOnClipboard(e: ClipboardEvent): void {
+    const { text, html } = app.selectionClip();
+    e.clipboardData?.setData('text/plain', text);
+    if (html) e.clipboardData?.setData('text/html', html);
+  }
+
   function onCopy(e: ClipboardEvent): void {
     if (grid.editing || grid.editingHeader !== null || rowCount === 0) return;
     e.preventDefault();
-    e.clipboardData?.setData('text/plain', app.selectionText());
+    putOnClipboard(e);
     const n = (range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1);
     if (n > 1) app.toast(`Copied ${n} cells`);
   }
@@ -724,7 +743,7 @@
   function onCut(e: ClipboardEvent): void {
     if (grid.editing || grid.editingHeader !== null || rowCount === 0) return;
     e.preventDefault();
-    e.clipboardData?.setData('text/plain', app.selectionText());
+    putOnClipboard(e);
     app.clearSelection();
     const n = (range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1);
     app.toast(n > 1 ? `Cut ${n} cells` : 'Cut');
@@ -733,9 +752,8 @@
   function onPaste(e: ClipboardEvent): void {
     if (grid.editing || grid.editingHeader !== null) return;
     const text = e.clipboardData?.getData('text/plain') ?? '';
-    if (!text) return;
-    e.preventDefault();
-    app.pasteText(text);
+    const html = e.clipboardData?.getData('text/html') || null;
+    if (app.pasteText(text, html)) e.preventDefault();
   }
 
   // ---------- header rename ----------

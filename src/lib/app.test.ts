@@ -10,6 +10,11 @@ function load(text: string): void {
 
 const column = (c = 0): string[] => app.doc.rows.map((r) => r[c]);
 
+function blank(): void {
+  app.doc.newSheet();
+  app.grid.select(0, 0, false);
+}
+
 function find(query: string): void {
   app.query = query;
   app.runSearch(false);
@@ -144,6 +149,88 @@ describe('clipboard', () => {
     app.grid.select(0, 0, false);
     app.pasteText(text);
     expect(app.doc.rows).toEqual([['t\tab', 'say "hi"'], ['two\nlines', 'plain']]);
+  });
+
+  it('turns a blank sheet into the pasted table, header and all, in one undo step', () => {
+    blank();
+    app.pasteText('Name\tAge\nAlice\t30\nBob\t41\n');
+    expect(app.doc.hasHeader).toBe(true);
+    expect(app.doc.columns).toEqual(['Name', 'Age']);
+    expect(app.doc.rows).toEqual([['Alice', '30'], ['Bob', '41']]);
+    expect(app.grid.range).toEqual({ r0: 0, c0: 0, r1: 1, c1: 1 });
+    app.undo();
+    expect(app.doc.hasHeader).toBe(false);
+    expect(app.doc.colCount).toBe(6);
+    expect(app.doc.rowCount).toBe(30);
+  });
+
+  it('keeps a first row of plain data in a blank sheet', () => {
+    blank();
+    app.pasteText('1\t2\n3\t4');
+    expect(app.doc.hasHeader).toBe(false);
+    expect(app.doc.columns).toEqual(['A', 'B']);
+    expect(app.doc.rows).toEqual([['1', '2'], ['3', '4']]);
+  });
+
+  it('pastes into a blank sheet at the selected cell when it is not the first', () => {
+    blank();
+    app.grid.select(2, 1, false);
+    app.pasteText('Name\tAge\nAlice\t30');
+    expect(app.doc.hasHeader).toBe(false);
+    expect(app.doc.rows[2].slice(1, 3)).toEqual(['Name', 'Age']);
+  });
+
+  it('carries a copy with headers into a new sheet', () => {
+    load('name,age\nAlice,30\nBob,41\n');
+    app.grid.selectAll();
+    const { text } = app.selectionClip(true);
+    blank();
+    app.pasteText(text);
+    expect(app.doc.columns).toEqual(['name', 'age']);
+    expect(app.doc.rows).toEqual([['Alice', '30'], ['Bob', '41']]);
+  });
+
+  it('never takes a plain copy for a header', () => {
+    load('name,city\nAlice,Paris\nBob,Rome\n');
+    app.grid.selectAll();
+    const text = app.selectionText();
+    blank();
+    app.pasteText(text);
+    expect(app.doc.hasHeader).toBe(false);
+    expect(app.doc.rows).toEqual([['Alice', 'Paris'], ['Bob', 'Rome']]);
+  });
+
+  it('leaves out a pasted header row that repeats the column names', () => {
+    load('name,email\na,a@x\nb,b@x\n');
+    app.grid.select(1, 0, false);
+    app.pasteText('Name\tEmail\nc\tc@x\nd\td@x');
+    expect(app.doc.rows).toEqual([['a', 'a@x'], ['c', 'c@x'], ['d', 'd@x']]);
+  });
+
+  it('pastes a first row that names other columns as data', () => {
+    load('name,email\na,a@x\n');
+    app.pasteText('foo\tbar\n1\t2');
+    expect(app.doc.rows).toEqual([['foo', 'bar'], ['1', '2']]);
+  });
+
+  it('names new columns from a pasted header row', () => {
+    load('email,phone\nx@y,123\nz@w,456\n');
+    app.grid.selectAll();
+    const { text } = app.selectionClip(true);
+    load('name,Column 2\na,\nb,\n');
+    app.grid.select(0, 1, false);
+    app.pasteText(text);
+    expect(app.doc.columns).toEqual(['name', 'email', 'phone']);
+    expect(app.doc.rows).toEqual([['a', 'x@y', '123'], ['b', 'z@w', '456']]);
+    app.undo();
+    expect(app.doc.columns).toEqual(['name', 'Column 2']);
+    expect(app.doc.rows).toEqual([['a', ''], ['b', '']]);
+  });
+
+  it('has nothing to paste from an empty clipboard', () => {
+    load('h\na\n');
+    expect(app.pasteText('')).toBe(false);
+    expect(column()).toEqual(['a']);
   });
 });
 

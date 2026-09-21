@@ -227,6 +227,12 @@ fn recovery_pending(app: tauri::AppHandle) -> Result<Vec<RecoveryEntry>, String>
     ))
 }
 
+/// The HTML on the clipboard, if there is any. Must stay async: reading on the main thread can deadlock on Linux.
+#[tauri::command(async)]
+fn read_clipboard_html() -> Option<String> {
+    arboard::Clipboard::new().ok()?.get().html().ok()
+}
+
 /// File paths passed on the command line, resolved to absolute paths.
 fn launch_paths() -> Vec<PathBuf> {
     std::env::args_os()
@@ -272,7 +278,8 @@ pub fn run() {
             launch_files,
             recovery_save,
             recovery_clear,
-            recovery_pending
+            recovery_pending,
+            read_clipboard_html
         ])
         .run(tauri::generate_context!())
         .expect("error while running bedsheet");

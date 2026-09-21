@@ -3,7 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export type ResizeDirection = 'East' | 'North' | 'NorthEast' | 'NorthWest' | 'South' | 'SouthEast' | 'SouthWest' | 'West';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
-import { readText as clipRead, writeText as clipWrite } from '@tauri-apps/plugin-clipboard-manager';
+import { readText as clipRead, writeText as clipWrite, writeHtml as clipWriteHtml } from '@tauri-apps/plugin-clipboard-manager';
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -206,14 +206,46 @@ export const win = {
     getCurrentWindow().onCloseRequested((e) => fn(() => e.preventDefault())),
 };
 
+/** Clipboard contents as plain text, plus HTML for apps that take rich text. */
+export interface ClipContents {
+  text: string;
+  html: string | null;
+}
+
+async function browserRead(): Promise<ClipContents> {
+  if (typeof navigator.clipboard.read === 'function') {
+    try {
+      const out: ClipContents = { text: '', html: null };
+      for (const item of await navigator.clipboard.read()) {
+        if (!out.text && item.types.includes('text/plain')) out.text = await (await item.getType('text/plain')).text();
+        if (!out.html && item.types.includes('text/html')) out.html = await (await item.getType('text/html')).text();
+      }
+      return out;
+    } catch {
+      /* fall back to text */
+    }
+  }
+  return { text: await navigator.clipboard.readText(), html: null };
+}
+
 export const clipboard = {
-  async writeText(text: string): Promise<void> {
-    if (isTauri) return clipWrite(text);
+  async write({ text, html }: ClipContents): Promise<void> {
+    if (isTauri) return html ? clipWriteHtml(html, text) : clipWrite(text);
+    if (html && typeof ClipboardItem !== 'undefined') {
+      try {
+        const blob = (data: string, type: string): Blob => new Blob([data], { type });
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob(text, 'text/plain'), 'text/html': blob(html, 'text/html') })]);
+        return;
+      } catch {
+        /* fall back to text */
+      }
+    }
     return navigator.clipboard.writeText(text);
   },
-  async readText(): Promise<string> {
-    if (isTauri) return clipRead();
-    return navigator.clipboard.readText();
+  async read(): Promise<ClipContents> {
+    if (!isTauri) return browserRead();
+    const [text, html] = await Promise.all([clipRead().catch(() => ''), invoke<string | null>('read_clipboard_html').catch(() => null)]);
+    return { text, html };
   },
 };
 

@@ -22,6 +22,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-window-state = "2"
 percent-encoding = "2"
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 
 [profile.release]
 panic = "abort"

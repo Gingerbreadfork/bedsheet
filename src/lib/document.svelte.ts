@@ -15,10 +15,11 @@ export interface CellEdit {
   value: string;
 }
 
-/** Columns added or removed at these indices. `restored` marks columns brought back with their data. */
+/** Columns added or removed at these indices. `restored` marks columns brought back with their data. `reset` replaces them all. */
 export type ColumnChange =
   | { kind: 'insert' | 'remove'; at: number[]; restored?: boolean }
-  | { kind: 'move'; from: number; to: number };
+  | { kind: 'move'; from: number; to: number }
+  | { kind: 'reset' };
 
 export interface LoadMeta {
   name: string;
@@ -97,6 +98,21 @@ export class Doc {
 
   cell(r: number, c: number): string {
     return this.rows[r]?.[c] ?? '';
+  }
+
+  /** Whether column `c` still has the name Bedsheet made up for it, or none. */
+  hasGeneratedName(c: number): boolean {
+    const name = this.columns[c] ?? '';
+    return !this.hasHeader || name === '' || name === columnLetter(c) || /^Column \d+$/.test(name);
+  }
+
+  isColumnEmpty(c: number): boolean {
+    return this.rows.every((row) => (row[c] ?? '') === '');
+  }
+
+  /** Nothing entered yet: no named columns and every cell empty. */
+  isBlank(): boolean {
+    return this.columns.every((_, c) => this.hasGeneratedName(c)) && this.rows.every((row) => row.every((v) => v === ''));
   }
 
   newSheet(rows = 30, cols = 6): void {
@@ -253,8 +269,11 @@ export class Doc {
     this.setCells(edits, 'Fill down');
   }
 
-  /** Writes a block of values at (r0, c0), growing the sheet if needed. One undo step. */
-  applyBlock(r0: number, c0: number, block: string[][], label = 'Paste'): { rows: number; cols: number } {
+  /**
+   * Writes a block of values at (r0, c0), growing the sheet if needed. `names` renames the columns
+   * the block lands in, skipping undefined entries. One undo step.
+   */
+  applyBlock(r0: number, c0: number, block: string[][], label = 'Paste', names?: (string | undefined)[]): { rows: number; cols: number } {
     const blockRows = block.length;
     const blockCols = block.reduce((m, r) => Math.max(m, r.length), 0);
     const addRows = Math.max(0, r0 + blockRows - this.rows.length);
@@ -266,6 +285,7 @@ export class Doc {
       }
     }
     const prevCols = this.columns.length;
+    const prevNames = (names ?? []).map((_, j) => this.columns[c0 + j]);
     this.exec(
       {
         label,
@@ -275,9 +295,15 @@ export class Doc {
           for (let r = 0; r < blockRows; r++) {
             for (let c = 0; c < blockCols; c++) this.rows[r0 + r][c0 + c] = block[r][c] ?? '';
           }
+          names?.forEach((name, j) => {
+            if (name !== undefined && c0 + j < this.columns.length) this.columns[c0 + j] = name;
+          });
         },
         undo: () => {
           for (const e of prev) if (this.rows[e.r] && e.c < prevCols) this.rows[e.r][e.c] = e.value;
+          prevNames.forEach((name, j) => {
+            if (c0 + j < prevCols) this.columns[c0 + j] = name;
+          });
           if (addRows > 0) this.rows.length -= addRows;
           if (addCols > 0) {
             this.columns.length = prevCols;
@@ -288,6 +314,19 @@ export class Doc {
       'structure',
     );
     return { rows: blockRows, cols: blockCols };
+  }
+
+  /** Replaces every column and row. One undo step. */
+  setContents(columns: string[], rows: string[][], hasHeader: boolean, label: string): void {
+    const before = { columns: this.columns, rows: this.rows, hasHeader: this.hasHeader };
+    const after = { columns, rows, hasHeader };
+    const apply = (s: typeof before): void => {
+      this.columns = s.columns;
+      this.rows = s.rows;
+      this.hasHeader = s.hasHeader;
+      this.emitColumns({ kind: 'reset' });
+    };
+    this.exec({ label, redo: () => apply(after), undo: () => apply(before) }, 'structure');
   }
 
   /** Inserts `count` blank rows, or copies of `data` when given. */

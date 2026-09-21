@@ -1,6 +1,8 @@
 import { Doc } from './document.svelte';
 import { GridState, cellKey, DEFAULT_COL_WIDTH, type Pos } from './grid.svelte';
-import { serializeCsv, parseClipboardBlock, DELIMITERS, delimiterLabel } from './csv';
+import { serializeCsv, columnLetter, DELIMITERS, delimiterLabel } from './csv';
+import { readClipboard, toHtmlTable, HTML_MAX_CELLS, type ClipBlock } from './clipboard';
+import { looksLikeHeader } from './infer';
 import { decodeBytes, encodeText, ENCODINGS } from './encoding';
 import { parseShortcut, eventMatches, isEditableTarget, type Shortcut } from './keys';
 import type { CellEdit } from './document.svelte';
@@ -20,6 +22,7 @@ import {
   fileStamp,
   sameStamp,
   recovery,
+  type ClipContents,
   type FileStamp,
   type OpenedFile,
   type RecentEntry,
@@ -116,6 +119,8 @@ const nextFrame = (): Promise<void> =>
   });
 let toastId = 0;
 const sameText = (a: string, b: string): boolean => a.replaceAll('\r\n', '\n') === b.replaceAll('\r\n', '\n');
+const widthOf = (block: string[][]): number => block.reduce((m, r) => Math.max(m, r.length), 0);
+const sameName = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 export class AppState {
   doc = new Doc();
@@ -149,13 +154,14 @@ export class AppState {
   focusReplace: (() => void) | null = null;
   commitEdit: (() => void) | null = null;
   commitHeader: (() => void) | null = null;
-  autoFit: ((cols: number[] | 'all') => void) | null = null;
+  /** Fits columns to their contents. `widen` only ever grows them, and also measures those document rows. */
+  autoFit: ((cols: number[] | 'all', widen?: { r0: number; r1: number }) => void) | null = null;
 
   readonly commands: CommandDef[];
   private bindings: { s: Shortcut; cmd: CommandDef }[] = [];
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private preserveView = false;
-  private copied: { text: string; block: string[][] } | null = null;
+  private copied: { text: string; block: ClipBlock } | null = null;
   private sourceBytes: Uint8Array | null = null;
   private diskStamp: FileStamp | null = null;
   private noticedStamp: FileStamp | null = null;
@@ -173,6 +179,10 @@ export class AppState {
       }
     }
     this.doc.onColumnChange((change) => {
+      if (change.kind === 'reset') {
+        this.grid.widths = [];
+        return;
+      }
       const widths = this.grid.widths;
       if (widths.length === 0) return;
       if (change.kind === 'move') {
@@ -568,78 +578,102 @@ export class AppState {
     return edits;
   }
 
-  /** Text for the clipboard. The block is remembered so pasting it back keeps every cell intact. */
-  selectionText(): string {
-    if (!this.hasCells) return '';
+  /**
+   * The selection as clipboard text, and as an HTML table for documents. The block is remembered
+   * so pasting it back keeps every cell intact.
+   */
+  selectionClip(withHeaders = false): ClipContents {
+    if (!this.hasCells) return { text: '', html: null };
     const { r0, c0, r1, c1 } = this.grid.range;
-    const block: string[][] = [];
+    const rows: string[][] = [];
+    if (withHeaders) rows.push(Array.from({ length: c1 - c0 + 1 }, (_, i) => this.doc.columnLabel(c0 + i)));
     for (let vr = r0; vr <= r1; vr++) {
       const r = this.grid.dataRow(vr);
-      block.push(this.doc.rows[r].slice(c0, c1 + 1));
+      rows.push(this.doc.rows[r].slice(c0, c1 + 1));
     }
-    const single = block.length === 1 && block[0].length === 1;
-    const text = single ? block[0][0] : serializeCsv(block, '\t', '\n');
-    this.copied = { text, block };
-    return text;
+    const cells = rows.length * (c1 - c0 + 1);
+    const text = cells === 1 ? rows[0][0] : serializeCsv(rows, '\t', '\n');
+    const html = cells === 1 || cells > HTML_MAX_CELLS ? null : toHtmlTable(rows, withHeaders);
+    this.copied = { text, block: { rows, header: withHeaders } };
+    return { text, html };
+  }
+
+  selectionText(): string {
+    return this.selectionClip().text;
   }
 
   async copy(): Promise<void> {
     if (!this.hasCells) return;
     this.commitPending();
-    await clipboard.writeText(this.selectionText());
+    await clipboard.write(this.selectionClip());
     this.toastCells('Copied');
   }
 
   async copyWithHeaders(): Promise<void> {
     if (!this.hasCells) return;
     this.commitPending();
-    const { c0, c1 } = this.grid.range;
-    const names = Array.from({ length: c1 - c0 + 1 }, (_, i) => this.doc.columnLabel(c0 + i));
-    const body = this.selectionText();
-    const text = serializeCsv([names], '\t', '\n') + (this.grid.isSingle ? serializeCsv([[body]], '\t', '\n') : body);
-    this.copied = null;
-    await clipboard.writeText(text);
+    await clipboard.write(this.selectionClip(true));
     this.toast('Copied with headers');
   }
 
   async cut(): Promise<void> {
     if (!this.hasCells) return;
     this.commitPending();
-    await clipboard.writeText(this.selectionText());
+    await clipboard.write(this.selectionClip());
     this.doc.setCells(this.selectionEdits(() => ''), 'Cut');
     this.toastCells('Cut');
   }
 
   async paste(): Promise<void> {
     if (!this.doc.loaded) return;
-    let text = '';
+    let contents: ClipContents = { text: '', html: null };
     try {
-      text = await clipboard.readText();
+      contents = await clipboard.read();
     } catch {
       /* empty clipboard, or something that isn't text */
     }
-    if (text) this.pasteText(text);
-    else this.toast('Nothing to paste');
+    if (!this.pasteText(contents.text, contents.html)) this.toast('Nothing to paste');
   }
 
-  pasteText(text: string): void {
-    if (!this.doc.loaded || !text) return;
+  /** Pastes clipboard text, or the table in its HTML, at the selection. False when there is nothing to paste. */
+  pasteText(text: string, html: string | null = null): boolean {
+    if (!this.doc.loaded) return false;
+    const clip = this.clipBlock(text, html);
+    if (!clip) return false;
     this.commitPending();
-    const own = this.copied && sameText(this.copied.text, text) ? this.copied.block : null;
-    const block = own ? own.map((row) => [...row]) : parseClipboardBlock(text);
+    this.pasteBlock(clip);
+    return true;
+  }
+
+  private clipBlock(text: string, html: string | null): ClipBlock | null {
+    const own = text && this.copied && sameText(this.copied.text, text) ? this.copied.block : null;
+    if (own) return { rows: own.rows.map((row) => [...row]), header: own.header };
+    return readClipboard(text, html);
+  }
+
+  private pasteBlock({ rows, header }: ClipBlock): void {
     const g = this.grid;
     const { r0, c0, r1, c1 } = g.range;
+    let block = rows;
     const single = block.length === 1 && block[0].length === 1;
     if (single && !g.isSingle) {
       const v = block[0][0];
       this.doc.setCells(this.selectionEdits(() => v), 'Paste');
+      this.widen(c0, c1, r0, r1);
       this.toast(`Pasted into ${(r1 - r0 + 1) * (c1 - c0 + 1)} cells`);
       return;
     }
-    const blockCols = block.reduce((m, r) => Math.max(m, r.length), 0);
+    if (!single && !g.viewRows && r0 === 0 && c0 === 0 && this.doc.isBlank()) {
+      this.pasteIntoBlank(block, header);
+      return;
+    }
+    const placed = header !== false && block.length > 1 ? this.placeHeader(block, c0, header === true && !g.viewRows) : null;
+    if (placed) block = block.slice(1);
+    const names = placed?.names;
+    const blockCols = widthOf(block);
     const selRows = r1 - r0 + 1;
     const selCols = c1 - c0 + 1;
-    const tiles = (selRows > block.length || selCols > blockCols) && selRows % block.length === 0 && selCols % blockCols === 0;
+    const tiles = !names && (selRows > block.length || selCols > blockCols) && selRows % block.length === 0 && selCols % blockCols === 0;
     if (tiles) {
       const edits: CellEdit[] = [];
       for (let i = 0; i < selRows; i++) {
@@ -647,6 +681,7 @@ export class AppState {
         for (let j = 0; j < selCols; j++) edits.push({ r, c: c0 + j, value: block[i % block.length][j % blockCols] ?? '' });
       }
       this.doc.setCells(edits, 'Paste');
+      this.widen(c0, c1, r0, r1);
       this.toast(`Pasted into ${selRows} × ${selCols}`);
       return;
     }
@@ -660,12 +695,65 @@ export class AppState {
       }
       this.doc.setCells(edits, 'Paste');
     } else {
-      this.doc.applyBlock(r0, c0, block, 'Paste');
+      this.doc.applyBlock(r0, c0, block, 'Paste', names);
     }
-    const cols = block.reduce((m, r) => Math.max(m, r.length), 0);
     g.anchor = { r: r0, c: c0 };
-    g.extendTo(r0 + block.length - 1, c0 + cols - 1, false);
-    if (block.length > 1 || cols > 1) this.toast(`Pasted ${block.length} × ${cols}`);
+    g.extendTo(r0 + block.length - 1, c0 + blockCols - 1, false);
+    this.widen(c0, c0 + blockCols - 1, r0, r0 + block.length - 1);
+    const size = `${block.length} × ${blockCols}`;
+    if (names) this.toast(`Pasted ${size}, with its header row as column names`, 'info', 3600);
+    else if (placed) this.toast(`Pasted ${size}, leaving out its header row`, 'info', 3600);
+    else if (block.length > 1 || blockCols > 1) this.toast(`Pasted ${size}`);
+  }
+
+  /**
+   * Works out whether the block's first row belongs in the header. It does when it repeats the names
+   * of the columns it lands in, or, if `mayName`, when those columns are new or unused and can take
+   * its names. Returns the names to give them, or null when the row should be pasted as data.
+   */
+  private placeHeader(block: string[][], c0: number, mayName: boolean): { names?: (string | undefined)[] } | null {
+    const doc = this.doc;
+    if (!doc.hasHeader) return null;
+    const first = block[0];
+    const names: (string | undefined)[] = [];
+    let renamed = false;
+    for (let j = 0; j < widthOf(block); j++) {
+      const c = c0 + j;
+      const name = first[j] ?? '';
+      if (c < doc.colCount && sameName(name, doc.columns[c])) {
+        names.push(undefined);
+      } else if (mayName && (c >= doc.colCount || (doc.hasGeneratedName(c) && doc.isColumnEmpty(c)))) {
+        names.push(name === '' ? undefined : name);
+        renamed = true;
+      } else {
+        return null;
+      }
+    }
+    return renamed ? { names } : {};
+  }
+
+  /** A blank sheet becomes the pasted table, with its first row as the header when it reads as one. */
+  private pasteIntoBlank(block: string[][], header: boolean | null): void {
+    const width = widthOf(block);
+    const rows = block.map((row) => Array.from({ length: width }, (_, c) => row[c] ?? ''));
+    const guessed = header === null && rows.length > 1 && looksLikeHeader(rows);
+    const named = header === true || guessed;
+    const columns = named ? rows.shift()! : Array.from({ length: width }, (_, c) => columnLetter(c));
+    this.doc.setContents(columns, rows, named, 'Paste');
+    this.grid.select(0, 0, false);
+    this.grid.extendTo(rows.length - 1, width - 1, false);
+    const size = `${rows.length} × ${width}`;
+    if (guessed) this.toast(`Pasted ${size}. The first row looks like column names, so it is the header. Use “Header row” if it is data.`, 'info', 5000);
+    else if (named) this.toast(`Pasted ${size}, with its header row as column names`, 'info', 3600);
+    else this.toast(`Pasted ${size}`);
+  }
+
+  /** Widens the columns a paste landed in so the new values show. Takes view rows. */
+  private widen(c0: number, c1: number, vr0: number, vr1: number): void {
+    const g = this.grid;
+    if (g.rowCount === 0) return;
+    const cols = Array.from({ length: c1 - c0 + 1 }, (_, i) => c0 + i);
+    this.autoFit?.(cols, { r0: g.dataRow(vr0), r1: g.dataRow(Math.min(vr1, g.rowCount - 1)) });
   }
 
   clearSelection(): void {

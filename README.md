@@ -45,7 +45,9 @@ Alt+Enter for a line break inside a cell. Tab and Enter commit and move. Every c
 undoable, including sorts and structural changes.
 
 **Handles the whole sheet.** Range, row, column, and select-all selection. Copy, cut, and
-paste blocks to and from other apps. Fill down and right. Insert, duplicate, move, and delete
+paste blocks to and from other apps. Copied cells paste into documents like Google Docs as a
+table, a pasted table's header row lands in the column headers, and pasted columns widen to show
+what's in them. Fill down and right. Insert, duplicate, move, and delete
 rows and columns. Rename columns. Sort with type-aware comparison. Resize columns by dragging, or double-click the
 edge to fit.
 
