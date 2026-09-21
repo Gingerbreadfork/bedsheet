@@ -2,7 +2,7 @@ import { Doc } from './document.svelte';
 import { GridState, cellKey, DEFAULT_COL_WIDTH, type Pos } from './grid.svelte';
 import { serializeCsv, columnLetter, blockWidth, DELIMITERS, delimiterLabel } from './csv';
 import { readClipboard, toHtmlTable, HTML_MAX_CELLS, type ClipBlock } from './clipboard';
-import { looksLikeHeader } from './infer';
+import { looksLikeHeader, clearlyHeader } from './infer';
 import { decodeBytes, encodeText, ENCODINGS } from './encoding';
 import { parseShortcut, eventMatches, isEditableTarget, type Shortcut } from './keys';
 import type { CellEdit } from './document.svelte';
@@ -738,11 +738,11 @@ export class AppState {
     return renamed ? { names } : {};
   }
 
-  /** A blank sheet becomes the pasted table, with its first row as the header when it reads as one. */
+  /** A blank sheet becomes the pasted table. Its first row becomes the header when the source marked it as one, or when it plainly reads as one. */
   private pasteIntoBlank(block: string[][], header: boolean | null): void {
     const width = blockWidth(block);
     const rows = block.map((row) => Array.from({ length: width }, (_, c) => row[c] ?? ''));
-    const guessed = header === null && rows.length > 1 && looksLikeHeader(rows);
+    const guessed = header === null && clearlyHeader(rows);
     const named = header === true || guessed;
     const columns = named ? rows.shift()! : Array.from({ length: width }, (_, c) => columnLetter(c));
     this.doc.setContents(columns, rows, named, 'Paste');
@@ -751,6 +751,7 @@ export class AppState {
     const size = `${rows.length} × ${width}`;
     if (guessed) this.toast(`Pasted ${size}. The first row looks like column names, so it is the header. Use “Header row” if it is data.`, 'info', 5000);
     else if (named) this.toast(`Pasted ${size}, with its header row as column names`, 'info', 3600);
+    else if (header === null && rows.length > 1 && looksLikeHeader(rows)) this.toast(`Pasted ${size}. Use “Header row” if the first row is column names.`, 'info', 5000);
     else this.toast(`Pasted ${size}`);
   }
 

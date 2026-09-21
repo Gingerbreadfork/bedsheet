@@ -164,6 +164,17 @@ describe('clipboard', () => {
     expect(app.doc.rowCount).toBe(30);
   });
 
+  it('keeps a pasted list of words as data in a blank sheet', () => {
+    blank();
+    app.pasteText('Alice\nBob\nCarol');
+    expect(app.doc.hasHeader).toBe(false);
+    expect(app.doc.rows).toEqual([['Alice'], ['Bob'], ['Carol']]);
+    blank();
+    app.pasteText('Name\tCity\nAlice\tParis');
+    expect(app.doc.hasHeader).toBe(false);
+    expect(app.doc.rows).toEqual([['Name', 'City'], ['Alice', 'Paris']]);
+  });
+
   it('keeps a first row of plain data in a blank sheet', () => {
     blank();
     app.pasteText('1\t2\n3\t4');

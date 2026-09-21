@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inferColumnType, isNumeric, toNumber, toTimestamp, detectDateOrder, looksLikeHeader } from './infer';
+import { inferColumnType, isNumeric, toNumber, toTimestamp, detectDateOrder, looksLikeHeader, clearlyHeader } from './infer';
 
 describe('numbers', () => {
   it('recognises the usual shapes', () => {
@@ -66,5 +66,16 @@ describe('looksLikeHeader', () => {
 
   it('takes one name above a typed column as enough', () => {
     expect(looksLikeHeader([['2023', 'total'], ['5', '6'], ['7', '8']])).toBe(true);
+  });
+});
+
+describe('clearlyHeader', () => {
+  it('needs a typed column under the names', () => {
+    expect(clearlyHeader([['Name', 'Age'], ['Alice', '30']])).toBe(true);
+    expect(clearlyHeader([['Name', '2020'], ['Bob', '5']])).toBe(true);
+    expect(clearlyHeader([['Name', 'City'], ['Alice', 'Paris']])).toBe(false);
+    expect(clearlyHeader([['Alice'], ['Bob']])).toBe(false);
+    expect(clearlyHeader([['1', '2'], ['3', '4']])).toBe(false);
+    expect(clearlyHeader([['Name', 'Age']])).toBe(false);
   });
 });

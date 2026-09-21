@@ -99,3 +99,17 @@ export function looksLikeHeader(rows: readonly (readonly string[])[]): boolean {
   }
   return dataLike.length === 0 || dataLike.every((cell) => YEAR.test(cell));
 }
+
+/**
+ * Stricter than `looksLikeHeader`, for pasted text with nothing else to go on: the first row must also
+ * sit over a column of numbers, dates or booleans, so a list of plain words stays data.
+ */
+export function clearlyHeader(rows: readonly (readonly string[])[]): boolean {
+  if (rows.length < 2 || !looksLikeHeader(rows)) return false;
+  const body = rows.slice(1, 201);
+  return rows[0].some((cell, c) => {
+    if (cell.trim() === '') return false;
+    const type = inferColumnType(body, c);
+    return type === 'number' || type === 'date' || type === 'bool';
+  });
+}
