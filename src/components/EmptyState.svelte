@@ -84,7 +84,9 @@
     background-color: var(--sheet);
     background-image:
       linear-gradient(to right, transparent calc(var(--margin-x) - 5px), var(--margin-rule) calc(var(--margin-x) - 5px), var(--margin-rule) calc(var(--margin-x) - 4px), transparent calc(var(--margin-x) - 4px), transparent calc(var(--margin-x) - 1px), var(--margin-rule) calc(var(--margin-x) - 1px), var(--margin-rule) var(--margin-x), transparent var(--margin-x)),
-      repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--line) 27px, var(--line) 28px);
+      linear-gradient(to bottom, transparent 27px, var(--line) 27px, var(--line) 28px);
+    background-size: 100% 100%, 100% 28px;
+    background-repeat: no-repeat, repeat-y;
     box-shadow: 0 0 0 1px var(--line), 0 0 48px -12px oklch(20% 0.02 150 / 0.18);
     transition: background-color var(--t-med) var(--ease-out);
   }
