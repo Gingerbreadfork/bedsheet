@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { app } from './app.svelte';
+import { clipboard } from './platform';
 
 vi.stubGlobal('requestAnimationFrame', (fn: () => void) => setTimeout(fn, 0));
 
@@ -19,6 +20,10 @@ function find(query: string): void {
   app.query = query;
   app.runSearch(false);
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 beforeEach(() => {
   app.matchCase = false;
@@ -284,6 +289,27 @@ describe('clipboard', () => {
     app.pasteText(text);
     expect(app.doc.columns).toEqual(['name', 'email']);
     expect(app.doc.rows).toEqual([['src', 'src@x'], ['src', 'src@x']]);
+  });
+
+  it('does not paste over a file that opened while the clipboard was read', async () => {
+    app.doc.close();
+    vi.spyOn(clipboard, 'read').mockImplementation(async () => {
+      load('x\n1\n');
+      return { text: 'a\tb\n1\t2', html: null };
+    });
+    await app.paste();
+    expect(app.doc.columns).toEqual(['x']);
+    expect(app.doc.rows).toEqual([['1']]);
+  });
+
+  it('ignores a paste on the start screen while a file is opening', async () => {
+    app.doc.close();
+    const read = vi.spyOn(clipboard, 'read').mockResolvedValue({ text: 'a\tb\n1\t2', html: null });
+    app.busy = 'Opening t.csv';
+    await app.paste();
+    app.busy = null;
+    expect(read).not.toHaveBeenCalled();
+    expect(app.doc.loaded).toBe(false);
   });
 
   it('starts a sheet from the clipboard when no file is open', async () => {

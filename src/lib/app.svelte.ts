@@ -622,13 +622,16 @@ export class AppState {
 
   /** Pastes at the selection, or into a new sheet when no file is open. */
   async paste(): Promise<void> {
+    const intoNew = !this.doc.loaded;
+    if (intoNew && this.busy) return;
     let contents: ClipContents = { text: '', html: null };
     try {
       contents = await clipboard.read();
     } catch {
       /* empty clipboard, or something that isn't text */
     }
-    const pasted = this.doc.loaded ? this.pasteText(contents.text, contents.html) : await this.pasteAsNewSheet(contents.text, contents.html);
+    if (intoNew && (this.doc.loaded || this.busy)) return;
+    const pasted = intoNew ? await this.pasteAsNewSheet(contents.text, contents.html) : this.pasteText(contents.text, contents.html);
     if (!pasted) this.toast('Nothing to paste');
   }
 
@@ -1261,7 +1264,7 @@ export class AppState {
 
   handleKeydown(e: KeyboardEvent): boolean {
     const editable = isEditableTarget(e.target);
-    if (!this.doc.loaded && !editable && eventMatches(e, PASTE_KEY)) {
+    if (!this.doc.loaded && !this.busy && !editable && eventMatches(e, PASTE_KEY)) {
       e.preventDefault();
       void this.paste();
       return true;
