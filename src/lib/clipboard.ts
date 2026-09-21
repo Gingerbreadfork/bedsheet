@@ -34,29 +34,37 @@ const BLOCKS = new Set([
 ]);
 const SOFT_BREAK = '\u0001';
 
-/** A cell's text as it reads on screen: collapsed whitespace, a line per paragraph, and `<br>` breaks kept. */
+/**
+ * A cell's text as it reads on screen: collapsed whitespace, a line per paragraph, `<br>` breaks kept,
+ * `<pre>` text as written, and the cells of a table nested inside kept apart.
+ */
 function cellText(cell: Element): string {
   let out = '';
-  const walk = (node: Node): void => {
+  const walk = (node: Node, pre: boolean): void => {
     for (const child of Array.from(node.childNodes)) {
       if (child.nodeType === 3) {
-        out += (child.nodeValue ?? '').replace(/[ \t\n\r\f]+/g, ' ');
+        const text = child.nodeValue ?? '';
+        out += pre ? text.replace(/\r\n?/g, '\n').replaceAll(' ', '\u00a0') : text.replace(/[ \t\n\r\f]+/g, ' ');
       } else if (child.nodeType === 1) {
         const tag = (child as Element).tagName;
         if (SKIPPED.has(tag)) continue;
         if (tag === 'BR') {
           out += '\n';
+        } else if (tag === 'TD' || tag === 'TH') {
+          out += ' ';
+          walk(child, pre);
+          out += ' ';
         } else if (BLOCKS.has(tag)) {
           out += SOFT_BREAK;
-          walk(child);
+          walk(child, pre || tag === 'PRE');
           out += SOFT_BREAK;
         } else {
-          walk(child);
+          walk(child, pre);
         }
       }
     }
   };
-  walk(cell);
+  walk(cell, false);
   return out
     .replace(/\n(?= *(?:\u0001|$))/g, '')
     .replace(/ *\u0001[\u0001 ]*/g, '\n')

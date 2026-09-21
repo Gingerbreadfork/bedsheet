@@ -74,6 +74,13 @@ describe('parseHtmlTable', () => {
     expect(parseHtmlTable(html)?.rows).toEqual([['Hello big world', '', 'a\nb']]);
   });
 
+  it('keeps the cells of a nested table apart and preformatted text as written', () => {
+    const html =
+      '<table><tr><td><table><tr><td>x</td><td>y</td></tr><tr><td>z</td></tr></table></td>' +
+      '<td><pre>  indented\n    more</pre></td></tr></table>';
+    expect(parseHtmlTable(html)?.rows).toEqual([['x y\nz', 'indented\n    more']]);
+  });
+
   it('ignores HTML that is more than a table', () => {
     expect(parseHtmlTable('<p>Intro</p><table><tr><td>1</td></tr></table>')).toBeNull();
     expect(parseHtmlTable('<table><tr><td>1</td></tr></table><table><tr><td>2</td></tr></table>')).toBeNull();
