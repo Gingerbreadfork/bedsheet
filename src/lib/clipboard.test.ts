@@ -105,4 +105,12 @@ describe('pasting a table from a document', () => {
     expect(app.doc.columns).toEqual(['City', 'Notes']);
     expect(app.doc.rows).toEqual([['Paris', 'first line\nsecond line']]);
   });
+
+  it('leaves a row to type into when it is only a header', () => {
+    app.doc.newSheet();
+    app.grid.select(0, 0, false);
+    app.pasteText('a\tb', '<table><thead><tr><th>a</th><th>b</th></tr></thead></table>');
+    expect(app.doc.columns).toEqual(['a', 'b']);
+    expect(app.doc.rows).toEqual([['', '']]);
+  });
 });

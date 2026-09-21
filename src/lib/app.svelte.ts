@@ -750,11 +750,14 @@ export class AppState {
     if (lettered) rows.shift();
     const named = (header === true && !lettered) || guessed;
     const columns = named ? rows.shift()! : Array.from({ length: width }, (_, c) => columnLetter(c));
+    const headerOnly = rows.length === 0;
+    if (headerOnly) rows.push(new Array<string>(width).fill(''));
     this.doc.setContents(columns, rows, named, 'Paste');
     this.grid.select(0, 0, false);
     this.grid.extendTo(rows.length - 1, width - 1, false);
     const size = `${rows.length} × ${width}`;
-    if (guessed) this.toast(`Pasted ${size}. The first row looks like column names, so it is the header. Use “Header row” if it is data.`, 'info', 5000);
+    if (headerOnly) this.toast(`Pasted ${width} column ${width === 1 ? 'name' : 'names'}`);
+    else if (guessed) this.toast(`Pasted ${size}. The first row looks like column names, so it is the header. Use “Header row” if it is data.`, 'info', 5000);
     else if (named) this.toast(`Pasted ${size}, with its header row as column names`, 'info', 3600);
     else if (header === null && rows.length > 1 && looksLikeHeader(rows)) this.toast(`Pasted ${size}. Use “Header row” if the first row is column names.`, 'info', 5000);
     else this.toast(`Pasted ${size}`);
