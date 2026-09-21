@@ -121,6 +121,7 @@ let toastId = 0;
 const sameText = (a: string, b: string): boolean => a.replaceAll('\r\n', '\n') === b.replaceAll('\r\n', '\n');
 const widthOf = (block: string[][]): number => block.reduce((m, r) => Math.max(m, r.length), 0);
 const sameName = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
+const PASTE_KEY = parseShortcut('Ctrl+V');
 
 export class AppState {
   doc = new Doc();
@@ -624,15 +625,16 @@ export class AppState {
     this.toastCells('Cut');
   }
 
+  /** Pastes at the selection, or into a new sheet when no file is open. */
   async paste(): Promise<void> {
-    if (!this.doc.loaded) return;
     let contents: ClipContents = { text: '', html: null };
     try {
       contents = await clipboard.read();
     } catch {
       /* empty clipboard, or something that isn't text */
     }
-    if (!this.pasteText(contents.text, contents.html)) this.toast('Nothing to paste');
+    const pasted = this.doc.loaded ? this.pasteText(contents.text, contents.html) : await this.pasteAsNewSheet(contents.text, contents.html);
+    if (!pasted) this.toast('Nothing to paste');
   }
 
   /** Pastes clipboard text, or the table in its HTML, at the selection. False when there is nothing to paste. */
@@ -641,6 +643,15 @@ export class AppState {
     const clip = this.clipBlock(text, html);
     if (!clip) return false;
     this.commitPending();
+    this.pasteBlock(clip);
+    return true;
+  }
+
+  async pasteAsNewSheet(text: string, html: string | null = null): Promise<boolean> {
+    const clip = this.clipBlock(text, html);
+    if (!clip) return false;
+    await this.newSheet();
+    if (!this.doc.loaded) return false;
     this.pasteBlock(clip);
     return true;
   }
@@ -1242,6 +1253,11 @@ export class AppState {
 
   handleKeydown(e: KeyboardEvent): boolean {
     const editable = isEditableTarget(e.target);
+    if (!this.doc.loaded && !editable && eventMatches(e, PASTE_KEY)) {
+      e.preventDefault();
+      void this.paste();
+      return true;
+    }
     for (const { s, cmd } of this.bindings) {
       if (!eventMatches(e, s)) continue;
       if (editable && !cmd.global) continue;
@@ -1273,7 +1289,7 @@ export class AppState {
       { id: 'edit.redo', title: 'Redo', group: 'Edit', shortcut: 'Ctrl+Shift+Z', altShortcuts: ['Ctrl+Y'], when: () => this.doc.canRedo, run: () => this.redo() },
       { id: 'edit.cut', title: 'Cut', group: 'Edit', shortcut: 'Ctrl+X', nativeKey: true, when: hasRows, run: () => this.cut() },
       { id: 'edit.copy', title: 'Copy', group: 'Edit', shortcut: 'Ctrl+C', nativeKey: true, when: hasRows, run: () => this.copy() },
-      { id: 'edit.paste', title: 'Paste', group: 'Edit', shortcut: 'Ctrl+V', nativeKey: true, when: loaded, run: () => this.paste() },
+      { id: 'edit.paste', title: () => (this.doc.loaded ? 'Paste' : 'New sheet from clipboard'), group: 'Edit', shortcut: 'Ctrl+V', nativeKey: true, run: () => this.paste() },
       { id: 'edit.clear', title: 'Clear cells', group: 'Edit', shortcut: 'Delete', altShortcuts: ['Backspace'], when: hasRows, run: () => this.clearSelection() },
       { id: 'edit.fillDown', title: 'Fill down', group: 'Edit', shortcut: 'Ctrl+D', when: hasRows, run: () => this.fillDown() },
       { id: 'edit.fillRight', title: 'Fill right', group: 'Edit', shortcut: 'Ctrl+R', when: hasRows, run: () => this.fillRight() },

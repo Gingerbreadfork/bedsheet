@@ -227,6 +227,14 @@ describe('clipboard', () => {
     expect(app.doc.rows).toEqual([['a', ''], ['b', '']]);
   });
 
+  it('starts a sheet from the clipboard when no file is open', async () => {
+    app.doc.close();
+    expect(await app.pasteAsNewSheet('a\tb\n1\t2')).toBe(true);
+    expect(app.doc.loaded).toBe(true);
+    expect(app.doc.columns).toEqual(['a', 'b']);
+    expect(app.doc.rows).toEqual([['1', '2']]);
+  });
+
   it('has nothing to paste from an empty clipboard', () => {
     load('h\na\n');
     expect(app.pasteText('')).toBe(false);

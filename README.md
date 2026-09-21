@@ -64,7 +64,8 @@ Multi-line cells show their line breaks inline.
 cover the common cases. Ctrl+/ shows the full keyboard reference.
 
 **Follows your desktop.** Light and dark themes track the system setting, or pin one.
-Recent files, drag and drop to open, and `bedsheet file.csv` from the terminal.
+Recent files, drag and drop to open, paste a table to start a sheet from it, and
+`bedsheet file.csv` from the terminal.
 
 <p align="center">
   <img src="docs/find.png" width="49%" alt="Find and replace bar with only matching rows shown">

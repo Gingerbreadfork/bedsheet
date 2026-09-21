@@ -26,7 +26,7 @@
   <div class="page">
     <div class="ledger">
       <h1>{app.dragHover ? 'Drop to open' : 'Drop a file here'}</h1>
-      <p class="lede">CSV, TSV, or any delimited text. Or start with a blank sheet.</p>
+      <p class="lede">CSV, TSV, or any delimited text. Or start with a blank sheet, or paste a table.</p>
       <div class="actions">
         <button class="btn primary" onclick={() => app.open()}>
           Open file
