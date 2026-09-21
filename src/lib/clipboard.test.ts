@@ -91,6 +91,16 @@ describe('readClipboard', () => {
     expect(readClipboard('a\tb\n  x\ty\n', html)).toEqual({ rows: [['a', 'b'], ['  x', 'y']], header: true });
   });
 
+  it('keeps quote marks that the text lost to CSV quoting', () => {
+    const html = '<table><tr><td>"quoted" word</td><td>b</td></tr></table>';
+    expect(readClipboard('"quoted" word\tb\n', html)?.rows).toEqual([['"quoted" word', 'b']]);
+  });
+
+  it('keeps tabs and quotes the text carries exactly', () => {
+    const html = '<table><tr><td>t ab</td><td>say "hi"</td></tr></table>';
+    expect(readClipboard('"t\tab"\t"say ""hi"""\n', html)?.rows).toEqual([['t\tab', 'say "hi"']]);
+  });
+
   it('has nothing to paste without text or a table', () => {
     expect(readClipboard('', '<p>hi</p>')).toBeNull();
     expect(readClipboard('', null)).toBeNull();

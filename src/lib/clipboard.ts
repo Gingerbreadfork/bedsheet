@@ -160,17 +160,26 @@ export function parseHtmlTable(html: string): ClipBlock | null {
   return { rows, header: marked ? true : null };
 }
 
+const loose = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
+/** The text's cell, unless CSV quoting in the text swallowed quote marks that the table still shows. */
+function pickCell(textCell: string | undefined, tableCell: string): string {
+  if (textCell === undefined) return tableCell;
+  const lostQuotes = textCell !== tableCell && tableCell.includes('"') && loose(tableCell.replaceAll('"', '')) === loose(textCell.replaceAll('"', ''));
+  return lostQuotes ? tableCell : textCell;
+}
+
 /**
  * Reads pasted clipboard contents into cells, or null when there is nothing to paste. A table in the
  * HTML wins when the plain text doesn't split into the same shape, as with tables copied out of
- * documents; otherwise the text is used and the HTML only says whether the first row is a header.
+ * documents; otherwise the text's cells are used and the HTML says whether the first row is a header.
  */
 export function readClipboard(text: string, html: string | null): ClipBlock | null {
   const table = html ? parseHtmlTable(html) : null;
   const plain = text ? parseClipboardBlock(text) : null;
   if (!table) return plain && { rows: plain, header: null };
   if (plain && plain.length === table.rows.length && blockWidth(plain) === blockWidth(table.rows)) {
-    return { rows: plain, header: table.header };
+    return { rows: table.rows.map((row, r) => row.map((cell, c) => pickCell(plain[r][c], cell))), header: table.header };
   }
   return table;
 }
