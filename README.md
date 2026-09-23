@@ -47,9 +47,9 @@ undoable, including sorts and structural changes.
 **Handles the whole sheet.** Range, row, column, and select-all selection. Copy, cut, and
 paste blocks to and from other apps. Copied cells paste into documents like Google Docs as a
 plain table that takes the document's own styling, columns selected by their headers copy with
-their names, a pasted table's header row lands in the column headers, and pasted columns widen to
-show what's in them. Fill down and right. Insert, duplicate, move, and delete
-rows and columns. Rename columns. Sort with type-aware comparison. Resize columns by dragging, or double-click the
+their names (as does a sheet with no rows), a pasted table's header row lands in the column
+headers, and pasted columns widen to show what's in them. Fill down and right. Insert, duplicate,
+move, and delete rows and columns. Rename columns. Sort with type-aware comparison. Resize columns by dragging, or double-click the
 edge to fit.
 
 **Finds and replaces.** Matches are highlighted in the grid as you type. Step through them,

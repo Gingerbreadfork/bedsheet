@@ -737,7 +737,7 @@
   }
 
   function onCopy(e: ClipboardEvent): void {
-    if (grid.editing || grid.editingHeader !== null || rowCount === 0) return;
+    if (grid.editing || grid.editingHeader !== null || !app.canCopy) return;
     e.preventDefault();
     putOnClipboard(e);
     app.toastCells('Copied', false);

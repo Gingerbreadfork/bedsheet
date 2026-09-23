@@ -1,6 +1,8 @@
+// @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { app } from './app.svelte';
 import { clipboard } from './platform';
+import { toHtmlTable } from './clipboard';
 
 vi.stubGlobal('requestAnimationFrame', (fn: () => void) => setTimeout(fn, 0));
 
@@ -200,18 +202,35 @@ describe('clipboard', () => {
     expect(app.doc.rows).toEqual([['Name', 'City'], ['Alice', 'Paris']]);
   });
 
-  it('drops the column letters of a copy with headers from a sheet without names', () => {
+  it('leaves the column letters out of any copy from a sheet without names', async () => {
+    vi.spyOn(clipboard, 'write').mockResolvedValue();
     load('1,2\n3,4\n');
     expect(app.doc.hasHeader).toBe(false);
     app.grid.selectAll();
-    const { text } = app.selectionClip(true);
+    expect(app.selectionClip(true).text).toBe('1\t2\n3\t4\n');
+    await app.copyWithHeaders();
+    expect(app.toasts.at(-1)?.text).toBe('Copied without column names, as none are set');
+    app.grid.selectCols(0, 1);
+    app.grid.inHeader = true;
+    expect(app.selectionClip().text).toBe('1\t2\n3\t4\n');
+    await app.copy();
+    expect(app.toasts.at(-1)?.text).toBe('Copied 4 cells');
+    app.doc.deleteRows([0, 1]);
+    expect(app.canCopy).toBe(false);
+    expect(app.selectionClip().text).toBe('');
+  });
+
+  it('drops the column letters of a pasted table that has them for a header', () => {
+    const rows = [['A', 'B'], ['1', '2'], ['3', '4']];
+    const text = 'A\tB\n1\t2\n3\t4\n';
+    const html = toHtmlTable(rows, true);
     blank();
-    app.pasteText(text);
+    app.pasteText(text, html);
     expect(app.doc.hasHeader).toBe(false);
     expect(app.doc.rows).toEqual([['1', '2'], ['3', '4']]);
     load('5,6\n7,8\n');
     app.grid.select(1, 0, false);
-    app.pasteText(text);
+    app.pasteText(text, html);
     expect(app.doc.rows).toEqual([['5', '6'], ['1', '2'], ['3', '4']]);
   });
 
@@ -243,6 +262,28 @@ describe('clipboard', () => {
     app.pasteText(text);
     expect(app.doc.columns).toEqual(['age']);
     expect(app.doc.rows).toEqual([['30'], ['41']]);
+  });
+
+  it('copies the column names when there are no rows', async () => {
+    vi.spyOn(clipboard, 'write').mockResolvedValue();
+    load('name,age,city\n');
+    app.doc.setHasHeader(true);
+    expect(app.doc.rows).toEqual([]);
+    expect(app.commands.find((c) => c.id === 'edit.copy')?.when?.()).toBe(true);
+    app.grid.selectCols(0, 0);
+    await app.copyWithHeaders();
+    expect(app.toasts.at(-1)?.text).toBe('Copied 1 column name');
+    expect(app.selectionClip().text).toBe('name');
+    app.grid.selectCols(1, 2);
+    const { text, html } = app.selectionClip();
+    expect(text).toBe('age\tcity\n');
+    expect(html).toContain('<thead><tr><th>age</th><th>city</th></tr></thead><tbody></tbody>');
+    await app.copy();
+    expect(app.toasts.at(-1)?.text).toBe('Copied 2 column names');
+    blank();
+    app.pasteText(text, html);
+    expect(app.doc.columns).toEqual(['age', 'city']);
+    expect(app.doc.rows).toEqual([['', '']]);
   });
 
   it('says that the headers went along with a copy or cut', async () => {

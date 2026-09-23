@@ -574,6 +574,16 @@ export class AppState {
     return this.doc.loaded && this.grid.rowCount > 0 && this.grid.colCount > 0;
   }
 
+  /** The column names are all there is: a sheet with a header row but no rows under it. */
+  get namesOnly(): boolean {
+    return this.doc.loaded && this.doc.hasHeader && this.doc.rows.length === 0 && this.grid.colCount > 0;
+  }
+
+  /** Whether a copy has something to take: the cells, or the column names when there are no rows. */
+  get canCopy(): boolean {
+    return this.hasCells || this.namesOnly;
+  }
+
   /** Iterates the selection in data coordinates. */
   private selectionEdits(value: (r: number, c: number) => string): CellEdit[] {
     const edits: CellEdit[] = [];
@@ -588,37 +598,43 @@ export class AppState {
 
   /**
    * The selection as clipboard text, and as an HTML table for documents. The column names come
-   * along when asked for, or when the columns were selected by their headers. The block is
-   * remembered so pasting it back keeps every cell intact.
+   * along when asked for, when the columns were selected by their headers, or when there are no
+   * rows to copy, but never when the sheet has no header row and the columns are only lettered.
+   * The block is remembered so pasting it back keeps every cell intact.
    */
-  selectionClip(withHeaders = this.grid.inHeader): ClipContents {
-    if (!this.hasCells) return { text: '', html: null };
+  selectionClip(withHeaders = this.grid.inHeader || this.namesOnly): ClipContents {
+    const names = withHeaders && this.doc.loaded && this.doc.hasHeader && this.grid.colCount > 0;
+    if (!this.hasCells && !names) return { text: '', html: null };
     const { r0, c0, r1, c1 } = this.grid.range;
     const rows: string[][] = [];
-    if (withHeaders) rows.push(Array.from({ length: c1 - c0 + 1 }, (_, i) => this.doc.columnLabel(c0 + i)));
-    for (let vr = r0; vr <= r1; vr++) {
-      const r = this.grid.dataRow(vr);
-      rows.push(this.doc.rows[r].slice(c0, c1 + 1));
+    if (names) rows.push(Array.from({ length: c1 - c0 + 1 }, (_, i) => this.doc.columnLabel(c0 + i)));
+    if (this.hasCells) {
+      for (let vr = r0; vr <= r1; vr++) {
+        const r = this.grid.dataRow(vr);
+        rows.push(this.doc.rows[r].slice(c0, c1 + 1));
+      }
     }
     const cells = rows.length * (c1 - c0 + 1);
     const text = cells === 1 ? rows[0][0] : serializeCsv(rows, '\t', '\n');
-    const html = cells === 1 || cells > HTML_MAX_CELLS ? null : toHtmlTable(rows, withHeaders);
-    this.copied = { text, block: { rows, header: withHeaders } };
+    const html = cells === 1 || cells > HTML_MAX_CELLS ? null : toHtmlTable(rows, names);
+    this.copied = { text, block: { rows, header: names } };
     return { text, html };
   }
 
   async copy(): Promise<void> {
-    if (!this.hasCells) return;
+    if (!this.canCopy) return;
     this.commitPending();
     await clipboard.write(this.selectionClip());
     this.toastCells('Copied', false);
   }
 
   async copyWithHeaders(): Promise<void> {
-    if (!this.hasCells) return;
+    if (!this.canCopy) return;
     this.commitPending();
     await clipboard.write(this.selectionClip(true));
-    this.toast('Copied with headers');
+    if (!this.doc.hasHeader) this.toast('Copied without column names, as none are set');
+    else if (this.hasCells) this.toast('Copied with headers');
+    else this.toastCells('Copied', false);
   }
 
   async cut(): Promise<void> {
@@ -817,8 +833,9 @@ export class AppState {
     const { r0, c0, r1, c1 } = this.grid.range;
     const cols = c1 - c0 + 1;
     const n = (r1 - r0 + 1) * cols;
-    const headers = this.grid.inHeader ? ` with ${cols === 1 ? 'the header' : 'headers'}` : '';
-    if (n > 1) this.toast(`${verb} ${n} cells${headers}`);
+    const headers = this.grid.inHeader && this.doc.hasHeader ? ` with ${cols === 1 ? 'the header' : 'headers'}` : '';
+    if (this.namesOnly) this.toast(`${verb} ${cols} column ${cols === 1 ? 'name' : 'names'}`);
+    else if (n > 1) this.toast(`${verb} ${n} cells${headers}`);
     else if (headers) this.toast(`${verb} cell${headers}`);
     else if (single) this.toast(verb);
   }
@@ -1302,6 +1319,7 @@ export class AppState {
   private buildCommands(): CommandDef[] {
     const loaded = () => this.doc.loaded;
     const hasRows = () => this.hasCells;
+    const canCopy = () => this.canCopy;
     return [
       { id: 'file.new', title: 'New sheet', group: 'File', shortcut: 'Ctrl+N', global: true, run: () => this.newSheet() },
       { id: 'file.open', title: 'Open file…', group: 'File', shortcut: 'Ctrl+O', global: true, run: () => this.open() },
@@ -1313,12 +1331,12 @@ export class AppState {
       { id: 'edit.undo', title: () => this.undoTitle('undo'), group: 'Edit', shortcut: 'Ctrl+Z', when: loaded, run: () => this.undo() },
       { id: 'edit.redo', title: () => this.undoTitle('redo'), group: 'Edit', shortcut: 'Ctrl+Shift+Z', altShortcuts: ['Ctrl+Y'], when: loaded, run: () => this.redo() },
       { id: 'edit.cut', title: 'Cut', group: 'Edit', shortcut: 'Ctrl+X', nativeKey: true, when: hasRows, run: () => this.cut() },
-      { id: 'edit.copy', title: 'Copy', group: 'Edit', shortcut: 'Ctrl+C', nativeKey: true, when: hasRows, run: () => this.copy() },
+      { id: 'edit.copy', title: 'Copy', group: 'Edit', shortcut: 'Ctrl+C', nativeKey: true, when: canCopy, run: () => this.copy() },
       { id: 'edit.paste', title: () => (this.doc.loaded ? 'Paste' : 'New sheet from clipboard'), group: 'Edit', shortcut: 'Ctrl+V', nativeKey: true, run: () => this.paste() },
       { id: 'edit.clear', title: 'Clear cells', group: 'Edit', shortcut: 'Delete', altShortcuts: ['Backspace'], when: hasRows, run: () => this.clearSelection() },
       { id: 'edit.fillDown', title: 'Fill down', group: 'Edit', shortcut: 'Ctrl+D', when: hasRows, run: () => this.fillDown() },
       { id: 'edit.fillRight', title: 'Fill right', group: 'Edit', shortcut: 'Ctrl+R', when: hasRows, run: () => this.fillRight() },
-      { id: 'edit.copyHeaders', title: 'Copy with headers', group: 'Edit', shortcut: 'Ctrl+Shift+C', when: hasRows, run: () => this.copyWithHeaders() },
+      { id: 'edit.copyHeaders', title: 'Copy with headers', group: 'Edit', shortcut: 'Ctrl+Shift+C', when: canCopy, run: () => this.copyWithHeaders() },
       { id: 'edit.selectAll', title: 'Select all', group: 'Edit', shortcut: 'Ctrl+A', when: hasRows, run: () => this.grid.selectAll() },
 
       { id: 'rows.insertBelow', title: 'Insert row below', group: 'Rows', shortcut: 'Ctrl+Enter', when: loaded, run: () => this.insertRows('below') },
