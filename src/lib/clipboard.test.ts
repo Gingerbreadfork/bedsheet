@@ -31,8 +31,17 @@ describe('toHtmlTable', () => {
   it('marks the header row and reads back the same cells', () => {
     const rows = [['Name', 'Notes'], ['Alice', 'x < y\nand more'], ['', 'Bob & co']];
     const html = toHtmlTable(rows, true);
-    expect(html).toContain('<thead><tr><th');
+    expect(html).toContain('<thead><tr><th>Name</th><th>Notes</th></tr></thead>');
     expect(parseHtmlTable(html)).toEqual({ rows, header: true });
+  });
+
+  it('carries no styling or borders of its own', () => {
+    const html = toHtmlTable([['Name', 'Notes'], ['Alice', 'x']], true);
+    expect(html).toBe(
+      '<meta charset="utf-8"><table><thead><tr><th>Name</th><th>Notes</th></tr></thead><tbody><tr><td>Alice</td><td>x</td></tr></tbody></table>',
+    );
+    expect(html).not.toMatch(/<(table|tr|th|td)\s/);
+    expect(html).not.toMatch(/border|color|font|align/);
   });
 });
 

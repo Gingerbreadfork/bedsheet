@@ -10,20 +10,21 @@ export interface ClipBlock {
 export const HTML_MAX_CELLS = 20_000;
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
-const CELL_STYLE = 'border:1px solid #cccccc';
-const HEAD_STYLE = `${CELL_STYLE};font-weight:bold;text-align:left`;
 
 function cellHtml(value: string): string {
   return value.replace(/[&<>"]/g, (ch) => ESCAPES[ch]).replace(/\r\n|\n|\r/g, '<br style="mso-data-placement:same-cell">');
 }
 
-/** An HTML table of `rows` for documents and other rich-text targets, in black whatever the app's theme. */
+/**
+ * An HTML table of `rows` for documents and other rich-text targets. It carries no styling of its
+ * own, so the target's borders, colours and fonts apply; the header row is marked with `<thead>`.
+ */
 export function toHtmlTable(rows: readonly (readonly string[])[], header: boolean): string {
-  const row = (cells: readonly string[], tag: 'th' | 'td', style: string): string =>
-    `<tr>${cells.map((v) => `<${tag} style="${style}">${cellHtml(v)}</${tag}>`).join('')}</tr>`;
-  const head = header && rows.length > 0 ? `<thead>${row(rows[0], 'th', HEAD_STYLE)}</thead>` : '';
-  const body = (header ? rows.slice(1) : rows).map((r) => row(r, 'td', CELL_STYLE)).join('');
-  return `<meta charset="utf-8"><table style="border-collapse:collapse;color:#000000">${head}<tbody>${body}</tbody></table>`;
+  const row = (cells: readonly string[], tag: 'th' | 'td'): string =>
+    `<tr>${cells.map((v) => `<${tag}>${cellHtml(v)}</${tag}>`).join('')}</tr>`;
+  const head = header && rows.length > 0 ? `<thead>${row(rows[0], 'th')}</thead>` : '';
+  const body = (header ? rows.slice(1) : rows).map((r) => row(r, 'td')).join('');
+  return `<meta charset="utf-8"><table>${head}<tbody>${body}</tbody></table>`;
 }
 
 const SKIPPED = new Set(['STYLE', 'SCRIPT', 'TEMPLATE', 'NOSCRIPT', 'TITLE', 'META', 'LINK']);
