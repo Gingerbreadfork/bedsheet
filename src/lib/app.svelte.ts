@@ -587,10 +587,11 @@ export class AppState {
   }
 
   /**
-   * The selection as clipboard text, and as an HTML table for documents. The block is remembered
-   * so pasting it back keeps every cell intact.
+   * The selection as clipboard text, and as an HTML table for documents. The column names come
+   * along when asked for, or when the columns were selected by their headers. The block is
+   * remembered so pasting it back keeps every cell intact.
    */
-  selectionClip(withHeaders = false): ClipContents {
+  selectionClip(withHeaders = this.grid.inHeader): ClipContents {
     if (!this.hasCells) return { text: '', html: null };
     const { r0, c0, r1, c1 } = this.grid.range;
     const rows: string[][] = [];
@@ -610,7 +611,7 @@ export class AppState {
     if (!this.hasCells) return;
     this.commitPending();
     await clipboard.write(this.selectionClip());
-    this.toastCells('Copied');
+    this.toastCells('Copied', false);
   }
 
   async copyWithHeaders(): Promise<void> {
@@ -625,7 +626,7 @@ export class AppState {
     this.commitPending();
     await clipboard.write(this.selectionClip());
     this.doc.setCells(this.selectionEdits(() => ''), 'Cut');
-    this.toastCells('Cut');
+    this.toastCells('Cut', true);
   }
 
   /** Pastes at the selection, or into a new sheet when no file is open. */
@@ -811,10 +812,15 @@ export class AppState {
     );
   }
 
-  private toastCells(verb: string): void {
+  /** Says how much was copied or cut, and that the headers went along when the columns were selected by them. */
+  toastCells(verb: string, single: boolean): void {
     const { r0, c0, r1, c1 } = this.grid.range;
-    const n = (r1 - r0 + 1) * (c1 - c0 + 1);
-    if (n > 1) this.toast(`${verb} ${n} cells`);
+    const cols = c1 - c0 + 1;
+    const n = (r1 - r0 + 1) * cols;
+    const headers = this.grid.inHeader ? ` with ${cols === 1 ? 'the header' : 'headers'}` : '';
+    if (n > 1) this.toast(`${verb} ${n} cells${headers}`);
+    else if (headers) this.toast(`${verb} cell${headers}`);
+    else if (single) this.toast(verb);
   }
 
   // ---------- rows & columns ----------

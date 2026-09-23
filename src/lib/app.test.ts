@@ -29,6 +29,7 @@ beforeEach(() => {
   app.matchCase = false;
   app.filterRows = false;
   app.replaceWith = '';
+  app.grid.inHeader = false;
   find('');
 });
 
@@ -228,6 +229,41 @@ describe('clipboard', () => {
     app.pasteText('Name\tAge\nAlice\t30');
     expect(app.doc.hasHeader).toBe(false);
     expect(app.doc.rows[2].slice(1, 3)).toEqual(['Name', 'Age']);
+  });
+
+  it('copies the column names along when the columns were selected by their headers', () => {
+    load('name,age\nAlice,30\nBob,41\n');
+    app.grid.selectCols(1, 1);
+    expect(app.selectionClip().text).toBe('30\n41\n');
+    app.grid.inHeader = true;
+    const { text, html } = app.selectionClip();
+    expect(text).toBe('age\n30\n41\n');
+    expect(html).toContain('<thead><tr><th>age</th></tr></thead>');
+    blank();
+    app.pasteText(text);
+    expect(app.doc.columns).toEqual(['age']);
+    expect(app.doc.rows).toEqual([['30'], ['41']]);
+  });
+
+  it('says that the headers went along with a copy or cut', async () => {
+    vi.spyOn(clipboard, 'write').mockResolvedValue();
+    load('name,age\nAlice,30\nBob,41\n');
+    app.grid.selectCols(0, 1);
+    app.grid.inHeader = true;
+    await app.copy();
+    expect(app.toasts.at(-1)?.text).toBe('Copied 4 cells with headers');
+    app.grid.selectCols(0, 0);
+    await app.cut();
+    expect(app.toasts.at(-1)?.text).toBe('Cut 2 cells with the header');
+    expect(app.doc.columns).toEqual(['name', 'age']);
+    expect(app.doc.rows).toEqual([['', '30'], ['', '41']]);
+    app.grid.inHeader = false;
+    app.grid.select(0, 1, false);
+    const shown = app.toasts.length;
+    await app.copy();
+    expect(app.toasts.length).toBe(shown);
+    await app.cut();
+    expect(app.toasts.at(-1)?.text).toBe('Cut');
   });
 
   it('carries a copy with headers into a new sheet', () => {

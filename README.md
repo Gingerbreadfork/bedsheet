@@ -46,8 +46,9 @@ undoable, including sorts and structural changes.
 
 **Handles the whole sheet.** Range, row, column, and select-all selection. Copy, cut, and
 paste blocks to and from other apps. Copied cells paste into documents like Google Docs as a
-table, a pasted table's header row lands in the column headers, and pasted columns widen to show
-what's in them. Fill down and right. Insert, duplicate, move, and delete
+plain table that takes the document's own styling, columns selected by their headers copy with
+their names, a pasted table's header row lands in the column headers, and pasted columns widen to
+show what's in them. Fill down and right. Insert, duplicate, move, and delete
 rows and columns. Rename columns. Sort with type-aware comparison. Resize columns by dragging, or double-click the
 edge to fit.
 
@@ -125,7 +126,7 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 | Cancel | Esc |
 | Clear cells | Delete or Backspace |
 | Cut, copy, paste | Ctrl+X, Ctrl+C, Ctrl+V |
-| Copy with column names | Ctrl+Shift+C |
+| Copy with column names | Ctrl+Shift+C, or Ctrl+C with columns selected by their headers |
 | Fill down, fill right | Ctrl+D, Ctrl+R |
 | Undo, redo | Ctrl+Z, Ctrl+Shift+Z |
 

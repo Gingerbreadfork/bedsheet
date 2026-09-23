@@ -740,8 +740,7 @@
     if (grid.editing || grid.editingHeader !== null || rowCount === 0) return;
     e.preventDefault();
     putOnClipboard(e);
-    const n = (range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1);
-    if (n > 1) app.toast(`Copied ${n} cells`);
+    app.toastCells('Copied', false);
   }
 
   function onCut(e: ClipboardEvent): void {
@@ -749,8 +748,7 @@
     e.preventDefault();
     putOnClipboard(e);
     app.clearSelection();
-    const n = (range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1);
-    app.toast(n > 1 ? `Cut ${n} cells` : 'Cut');
+    app.toastCells('Cut', true);
   }
 
   function onPaste(e: ClipboardEvent): void {
