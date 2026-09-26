@@ -260,16 +260,19 @@ export class GridState {
   }
 
   ensureValid(): void {
+    let cut = false;
     if (this.picked.length > 0) {
       const last = Math.max(0, this.rowCount - 1);
       if (this.anchor.r !== 0) this.anchor = { r: 0, c: this.anchor.c };
       if (this.focus.r !== last) this.focus = { r: last, c: this.focus.c };
-      if (this.picked.some((c) => c >= this.colCount)) this.picked = this.picked.filter((c) => c < this.colCount);
+      cut = this.anchor.c >= this.colCount || this.focus.c >= this.colCount || this.picked.some((c) => c >= this.colCount);
+      if (cut) this.picked = this.picked.filter((c) => c < this.colCount);
     }
     const a = this.clamp(this.anchor);
     const f = this.clamp(this.focus);
     if (a.r !== this.anchor.r || a.c !== this.anchor.c) this.anchor = a;
     if (f.r !== this.focus.r || f.c !== this.focus.c) this.focus = f;
+    if (cut) this.settleCols();
     if (this.editing && (this.editing.r >= this.rowCount || this.editing.c >= this.colCount)) this.editing = null;
   }
 }

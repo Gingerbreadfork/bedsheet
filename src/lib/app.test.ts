@@ -740,6 +740,26 @@ describe('columns picked by Ctrl-clicking their headers', () => {
     expect(app.grid.isSplit).toBe(false);
   });
 
+  it('join the range again when an undo takes away the columns between them', () => {
+    load('a,b\n1,2\n');
+    app.grid.select(0, 1, false);
+    app.pasteText('x\ty\tz');
+    expect(app.doc.colCount).toBe(4);
+    pick(0, 3);
+    expect(app.grid.isSplit).toBe(true);
+    app.undo();
+    expect(app.doc.colCount).toBe(2);
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.range).toMatchObject({ c0: 0, c1: 1 });
+    load('a,b,c\n1,2,3\n');
+    app.grid.select(0, 2, false);
+    app.pasteText('x\ty\tz');
+    pick(2, 4);
+    app.undo();
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.selectedColIndices).toEqual([2]);
+  });
+
   it('stay whole columns when rows come and go', () => {
     load('a,b,c\n1,2,3\n4,5,6\n');
     pick(0, 2);
