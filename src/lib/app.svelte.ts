@@ -693,7 +693,7 @@ export class AppState {
   /** Pastes at the selection. Separately selected columns take the block's columns in order, as if side by side. */
   private pasteBlock({ rows, header }: ClipBlock): void {
     const g = this.grid;
-    const { r0, c0, r1, c1 } = g.range;
+    const { r0, c0, r1 } = g.range;
     if (g.viewRows && g.rowCount === 0) {
       this.toast('No rows are showing to paste into');
       return;
