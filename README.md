@@ -165,6 +165,9 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 
 - Click a row number to select the row, a column header to select the column, the corner
   to select everything. Shift-click extends. Dragging past the edge scrolls.
+- Ctrl-click column headers to select columns that aren't side by side, and Ctrl-click one
+  again to leave it out. Copy, clear, delete and find in selection work on just those
+  columns, and a paste fills them in order.
 - Paste a single value into a multi-cell selection and it fills every cell. Paste a block
   into a selection it divides evenly and it repeats to fill it.
 - Paste a block bigger than the sheet and the sheet grows to fit.

@@ -91,6 +91,8 @@ export interface SearchScope {
   r0: number;
   r1: number;
   rows: Set<number> | null;
+  /** The columns between c0 and c1 to search, when they aren't all of them. */
+  cols: Set<number> | null;
   label: string;
 }
 
@@ -179,6 +181,7 @@ export class AppState {
       }
     }
     this.doc.onColumnChange((change) => {
+      if (this.grid.picked.length > 0) this.grid.picked = [];
       if (change.kind === 'reset') {
         this.grid.widths = [];
         return;
@@ -588,10 +591,11 @@ export class AppState {
   private selectionEdits(value: (r: number, c: number) => string): CellEdit[] {
     const edits: CellEdit[] = [];
     if (!this.hasCells) return edits;
-    const { r0, c0, r1, c1 } = this.grid.range;
+    const { r0, r1 } = this.grid.range;
+    const cols = this.grid.selectedColIndices;
     for (let vr = r0; vr <= r1; vr++) {
       const r = this.grid.dataRow(vr);
-      for (let c = c0; c <= c1; c++) edits.push({ r, c, value: value(r, c) });
+      for (const c of cols) edits.push({ r, c, value: value(r, c) });
     }
     return edits;
   }
@@ -605,16 +609,17 @@ export class AppState {
   selectionClip(withHeaders = this.grid.inHeader || this.namesOnly): ClipContents {
     const names = withHeaders && this.doc.loaded && this.doc.hasHeader && this.grid.colCount > 0;
     if (!this.hasCells && !names) return { text: '', html: null };
-    const { r0, c0, r1, c1 } = this.grid.range;
+    const { r0, r1 } = this.grid.range;
+    const cols = this.grid.selectedColIndices;
     const rows: string[][] = [];
-    if (names) rows.push(Array.from({ length: c1 - c0 + 1 }, (_, i) => this.doc.columnLabel(c0 + i)));
+    if (names) rows.push(cols.map((c) => this.doc.columnLabel(c)));
     if (this.hasCells) {
       for (let vr = r0; vr <= r1; vr++) {
-        const r = this.grid.dataRow(vr);
-        rows.push(this.doc.rows[r].slice(c0, c1 + 1));
+        const row = this.doc.rows[this.grid.dataRow(vr)];
+        rows.push(cols.map((c) => row[c] ?? ''));
       }
     }
-    const cells = rows.length * (c1 - c0 + 1);
+    const cells = rows.length * cols.length;
     const text = cells === 1 ? rows[0][0] : serializeCsv(rows, '\t', '\n');
     const html = cells === 1 || cells > HTML_MAX_CELLS ? null : toHtmlTable(rows, names);
     this.copied = { text, block: { rows, header: names } };
@@ -685,6 +690,7 @@ export class AppState {
     return readClipboard(text, html);
   }
 
+  /** Pastes at the selection. Separately selected columns take the block's columns in order, as if side by side. */
   private pasteBlock({ rows, header }: ClipBlock): void {
     const g = this.grid;
     const { r0, c0, r1, c1 } = g.range;
@@ -692,52 +698,63 @@ export class AppState {
       this.toast('No rows are showing to paste into');
       return;
     }
+    const split = g.isSplit;
+    const cols = g.selectedColIndices;
+    const at = (j: number): number => (split ? cols[j] : c0 + j);
     let block = rows;
     const single = block.length === 1 && block[0].length === 1;
     if (single && !g.isSingle) {
       const v = block[0][0];
       this.doc.setCells(this.selectionEdits(() => v), 'Paste');
-      this.widen(c0, c1, r0, r1);
-      this.toast(`Pasted into ${(r1 - r0 + 1) * (c1 - c0 + 1)} cells`);
+      this.widen(cols, r0, r1);
+      this.toast(`Pasted into ${(r1 - r0 + 1) * cols.length} cells`);
       return;
     }
-    if (!single && !g.viewRows && r0 === 0 && c0 === 0 && this.doc.isBlank()) {
+    if (split && blockWidth(block) > cols.length) {
+      this.toast(`Select ${blockWidth(block)} columns to paste into, or just the first`);
+      return;
+    }
+    if (!single && !split && !g.viewRows && r0 === 0 && c0 === 0 && this.doc.isBlank()) {
       this.pasteIntoBlank(block, header);
       return;
     }
-    const placed = header === true && block.length > 1 ? this.placeHeader(block, c0, !g.viewRows) : null;
+    const placed = header === true && block.length > 1 ? this.placeHeader(block, at, !g.viewRows) : null;
     if (placed) block = block.slice(1);
     const names = placed?.names;
     const blockCols = blockWidth(block);
     const selRows = r1 - r0 + 1;
-    const selCols = c1 - c0 + 1;
+    const selCols = cols.length;
     const tiles = !names && (selRows > block.length || selCols > blockCols) && selRows % block.length === 0 && selCols % blockCols === 0;
     if (tiles) {
       const edits: CellEdit[] = [];
       for (let i = 0; i < selRows; i++) {
         const r = g.dataRow(r0 + i);
-        for (let j = 0; j < selCols; j++) edits.push({ r, c: c0 + j, value: block[i % block.length][j % blockCols] ?? '' });
+        for (let j = 0; j < selCols; j++) edits.push({ r, c: at(j), value: block[i % block.length][j % blockCols] ?? '' });
       }
       this.doc.setCells(edits, 'Paste');
-      this.widen(c0, c1, r0, r1);
+      this.widen(cols, r0, r1);
       this.toast(`Pasted into ${selRows} × ${selCols}`);
       return;
     }
+    const landed = split ? cols.slice(0, blockCols) : Array.from({ length: blockCols }, (_, j) => c0 + j);
     if (g.viewRows) {
+      const room = split ? cols.length : this.doc.colCount - c0;
       const edits: CellEdit[] = [];
       for (let i = 0; i < block.length && r0 + i < g.rowCount; i++) {
         const r = g.dataRow(r0 + i);
-        for (let j = 0; j < block[i].length && c0 + j < this.doc.colCount; j++) {
-          edits.push({ r, c: c0 + j, value: block[i][j] });
+        for (let j = 0; j < block[i].length && j < room; j++) {
+          edits.push({ r, c: at(j), value: block[i][j] });
         }
       }
       this.doc.setCells(edits, 'Paste');
     } else {
-      this.doc.applyBlock(r0, c0, block, 'Paste', names);
+      this.doc.applyBlock(r0, split ? landed : c0, block, 'Paste', names);
     }
-    g.anchor = { r: r0, c: c0 };
-    g.extendTo(r0 + block.length - 1, c0 + blockCols - 1, false);
-    this.widen(c0, c0 + blockCols - 1, r0, r0 + block.length - 1);
+    if (!split) {
+      g.anchor = { r: r0, c: c0 };
+      g.extendTo(r0 + block.length - 1, c0 + blockCols - 1, false);
+    }
+    this.widen(landed, r0, r0 + block.length - 1);
     const size = `${block.length} × ${blockCols}`;
     if (names) this.toast(`Pasted ${size}, with its header row as column names`, 'info', 3600);
     else if (placed) this.toast(`Pasted ${size}, leaving out its header row`, 'info', 3600);
@@ -745,18 +762,19 @@ export class AppState {
   }
 
   /**
-   * Places a header row the source marked as one. It is left out when it repeats the labels of the
-   * columns it lands in or is only Bedsheet's column letters, and if `mayName` it names columns that
-   * are new or unused. Returns the names to give them, or null when the row should be pasted as data.
+   * Places a header row the source marked as one, its column `j` landing in column `at(j)`. It is left
+   * out when it repeats the labels of the columns it lands in or is only Bedsheet's column letters, and
+   * if `mayName` it names columns that are new or unused. Returns the names to give them, or null when
+   * the row should be pasted as data.
    */
-  private placeHeader(block: string[][], c0: number, mayName: boolean): { names?: (string | undefined)[] } | null {
+  private placeHeader(block: string[][], at: (j: number) => number, mayName: boolean): { names?: (string | undefined)[] } | null {
     const doc = this.doc;
     const first = block[0];
     if (isLettering(first)) return {};
     const names: (string | undefined)[] = [];
     let renamed = false;
     for (let j = 0; j < blockWidth(block); j++) {
-      const c = c0 + j;
+      const c = at(j);
       const name = first[j] ?? '';
       if (c < doc.colCount && sameName(name, doc.columnLabel(c))) {
         names.push(undefined);
@@ -796,10 +814,9 @@ export class AppState {
   }
 
   /** Widens the columns a paste landed in so the new values show. Takes view rows. */
-  private widen(c0: number, c1: number, vr0: number, vr1: number): void {
+  private widen(cols: number[], vr0: number, vr1: number): void {
     const g = this.grid;
     if (g.rowCount === 0) return;
-    const cols = Array.from({ length: c1 - c0 + 1 }, (_, i) => c0 + i);
     this.autoFit?.(cols, { r0: g.dataRow(vr0), r1: g.dataRow(Math.min(vr1, g.rowCount - 1)) });
   }
 
@@ -809,10 +826,10 @@ export class AppState {
   }
 
   fillDown(): void {
-    const { r0, c0, r1, c1 } = this.grid.range;
+    const { r0, r1 } = this.grid.range;
     if (!this.hasCells || r1 === r0) return;
     const top: Record<number, string> = {};
-    for (let c = c0; c <= c1; c++) top[c] = this.doc.cell(this.grid.dataRow(r0), c);
+    for (const c of this.grid.selectedColIndices) top[c] = this.doc.cell(this.grid.dataRow(r0), c);
     this.doc.setCells(
       this.selectionEdits((_, c) => top[c]).filter((e) => e.r !== this.grid.dataRow(r0)),
       'Fill down',
@@ -820,18 +837,19 @@ export class AppState {
   }
 
   fillRight(): void {
-    const { c0, c1 } = this.grid.range;
-    if (!this.hasCells || c1 === c0) return;
+    const cols = this.grid.selectedColIndices;
+    const first = cols[0];
+    if (!this.hasCells || cols.length < 2) return;
     this.doc.setCells(
-      this.selectionEdits((r) => this.doc.cell(r, c0)).filter((e) => e.c !== c0),
+      this.selectionEdits((r) => this.doc.cell(r, first)).filter((e) => e.c !== first),
       'Fill right',
     );
   }
 
   /** Says how much was copied or cut, and that the headers went along when the columns were selected by them. */
   toastCells(verb: string, single: boolean): void {
-    const { r0, c0, r1, c1 } = this.grid.range;
-    const cols = c1 - c0 + 1;
+    const { r0, r1 } = this.grid.range;
+    const cols = this.grid.selectedColIndices.length;
     const n = (r1 - r0 + 1) * cols;
     const headers = this.grid.inHeader && this.doc.hasHeader ? ` with ${cols === 1 ? 'the header' : 'headers'}` : '';
     if (this.namesOnly) this.toast(`${verb} ${cols} column ${cols === 1 ? 'name' : 'names'}`);
@@ -866,6 +884,10 @@ export class AppState {
   moveColumns(delta: 1 | -1): void {
     const g = this.grid;
     if (!this.hasCells) return;
+    if (g.isSplit) {
+      this.toast('Only columns that sit side by side can be moved together');
+      return;
+    }
     this.commitPending();
     const { c0, c1 } = g.range;
     const { anchor, focus } = g;
@@ -931,8 +953,8 @@ export class AppState {
     if (!this.doc.loaded) return;
     this.commitPending();
     const g = this.grid;
-    const { c0, c1 } = g.range;
-    const at = where === 'left' ? c0 : c1 + 1;
+    const cols = g.selectedColIndices;
+    const at = where === 'left' ? cols[0] : cols[cols.length - 1] + 1;
     this.doc.insertColumn(at);
     g.select(g.anchor.r, at);
   }
@@ -946,9 +968,8 @@ export class AppState {
       this.toast('A sheet needs at least one column', 'error');
       return;
     }
-    const { c0 } = g.range;
     this.doc.deleteColumns(cols);
-    g.select(g.anchor.r, c0);
+    g.select(g.anchor.r, cols[0]);
     this.toast(cols.length === 1 ? 'Deleted column' : `Deleted ${cols.length} columns`);
   }
 
@@ -1052,6 +1073,8 @@ export class AppState {
     const scope = this.scope;
     const c0 = scope ? scope.c0 : 0;
     const c1 = scope ? Math.min(scope.c1, this.doc.colCount - 1) : this.doc.colCount - 1;
+    const cols: number[] = [];
+    for (let c = c0; c <= c1; c++) if (!scope?.cols || scope.cols.has(c)) cols.push(c);
     const r0 = scope ? scope.r0 : 0;
     const r1 = scope ? Math.min(scope.r1, rows.length - 1) : rows.length - 1;
     const matches: Pos[] = [];
@@ -1061,7 +1084,7 @@ export class AppState {
       if (scope?.rows && !scope.rows.has(r)) continue;
       const row = rows[r];
       let hit = false;
-      for (let c = c0; c <= c1; c++) {
+      for (const c of cols) {
         if (test(row[c] ?? '')) {
           matches.push({ r, c });
           set.add(cellKey(r, c));
@@ -1131,13 +1154,15 @@ export class AppState {
       this.scope = null;
     } else {
       const { r0, c0, r1, c1 } = g.range;
+      const cols = g.selectedColIndices;
       const wholeColumns = g.isSingle || (r0 === 0 && r1 === g.rowCount - 1);
-      const names = c0 === c1 ? this.doc.columnLabel(c0) : `${c1 - c0 + 1} columns`;
+      const names = cols.length === 1 ? this.doc.columnLabel(cols[0]) : `${cols.length} columns`;
       if (wholeColumns) {
-        this.scope = { c0, c1, r0: 0, r1: Infinity, rows: null, label: names };
+        const only = g.isSplit ? new Set(cols) : null;
+        this.scope = { c0: cols[0], c1: cols[cols.length - 1], r0: 0, r1: Infinity, rows: null, cols: only, label: names };
       } else {
         const rows = g.viewRows ? new Set(g.selectedRowIndices) : null;
-        this.scope = { c0, c1, r0: g.viewRows ? 0 : r0, r1: g.viewRows ? Infinity : r1, rows, label: 'selection' };
+        this.scope = { c0, c1, r0: g.viewRows ? 0 : r0, r1: g.viewRows ? Infinity : r1, rows, cols: null, label: 'selection' };
       }
     }
     this.grid.matchIndex = -1;
@@ -1349,7 +1374,7 @@ export class AppState {
 
       { id: 'cols.insertRight', title: 'Insert column to the right', group: 'Columns', when: loaded, run: () => this.insertColumn('right') },
       { id: 'cols.insertLeft', title: 'Insert column to the left', group: 'Columns', when: loaded, run: () => this.insertColumn('left') },
-      { id: 'cols.delete', title: () => (this.grid.range.c1 > this.grid.range.c0 ? 'Delete selected columns' : 'Delete column'), group: 'Columns', when: loaded, run: () => this.deleteColumns() },
+      { id: 'cols.delete', title: () => (this.grid.selectedColIndices.length > 1 ? 'Delete selected columns' : 'Delete column'), group: 'Columns', when: loaded, run: () => this.deleteColumns() },
       { id: 'cols.moveLeft', title: 'Move columns left', group: 'Columns', shortcut: 'Alt+ArrowLeft', when: hasRows, run: () => this.moveColumns(-1) },
       { id: 'cols.moveRight', title: 'Move columns right', group: 'Columns', shortcut: 'Alt+ArrowRight', when: hasRows, run: () => this.moveColumns(1) },
       { id: 'cols.rename', title: 'Rename column', group: 'Columns', when: loaded, run: () => (this.grid.editingHeader = this.grid.anchor.c) },

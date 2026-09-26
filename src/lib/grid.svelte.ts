@@ -40,6 +40,8 @@ export class GridState {
   zoom = $state(1);
   mono = $state(false);
   viewRows = $state.raw<number[] | null>(null);
+  /** Whole columns selected by Ctrl-clicking their headers, besides those of the range. */
+  picked = $state.raw<number[]>([]);
   /** The column the rows were last sorted by, until something reorders them again. */
   sortMark = $state.raw<{ c: number; dir: 'asc' | 'desc' } | null>(null);
   matches = $state.raw<Pos[]>([]);
@@ -96,7 +98,12 @@ export class GridState {
   }
 
   get isSingle(): boolean {
-    return this.anchor.r === this.focus.r && this.anchor.c === this.focus.c;
+    return this.picked.length === 0 && this.anchor.r === this.focus.r && this.anchor.c === this.focus.c;
+  }
+
+  /** Whether the selection is columns that don't all sit side by side. */
+  get isSplit(): boolean {
+    return this.picked.length > 0;
   }
 
   get selectedRowIndices(): number[] {
@@ -113,7 +120,19 @@ export class GridState {
     const { c0, c1 } = this.range;
     const out: number[] = [];
     for (let c = c0; c <= c1; c++) out.push(c);
-    return out;
+    if (this.picked.length === 0) return out;
+    return [...new Set([...out, ...this.picked])].sort((a, b) => a - b);
+  }
+
+  /** The selected columns as runs of neighbours, left to right. */
+  get colRuns(): { c0: number; c1: number }[] {
+    const runs: { c0: number; c1: number }[] = [];
+    for (const c of this.selectedColIndices) {
+      const last = runs[runs.length - 1];
+      if (last && last.c1 === c - 1) last.c1 = c;
+      else runs.push({ c0: c, c1: c });
+    }
+    return runs;
   }
 
   clamp(p: Pos): Pos {
@@ -123,6 +142,7 @@ export class GridState {
   }
 
   select(r: number, c: number, scroll = true): void {
+    this.unpick();
     const p = this.clamp({ r, c });
     this.anchor = p;
     this.focus = p;
@@ -130,6 +150,7 @@ export class GridState {
   }
 
   extendTo(r: number, c: number, scroll = true): void {
+    this.unpick();
     const p = this.clamp({ r, c });
     this.focus = p;
     if (scroll) this.scrollIntoView?.(p);
@@ -154,23 +175,77 @@ export class GridState {
   }
 
   selectAll(): void {
+    this.unpick();
     this.anchor = { r: 0, c: 0 };
     this.focus = this.clamp({ r: this.rowCount - 1, c: this.colCount - 1 });
   }
 
   selectRows(from: number, to: number): void {
+    this.unpick();
     this.anchor = this.clamp({ r: from, c: 0 });
     this.focus = this.clamp({ r: to, c: this.colCount - 1 });
   }
 
   selectCols(from: number, to: number): void {
+    this.unpick();
     this.anchor = this.clamp({ r: 0, c: from });
     this.focus = this.clamp({ r: this.rowCount - 1, c: to });
   }
 
+  /** Stretches the range to the whole columns from its anchor to `c`, keeping any picked columns. */
+  extendCols(c: number): void {
+    this.anchor = this.clamp({ r: 0, c: this.anchor.c });
+    this.focus = this.clamp({ r: this.rowCount - 1, c });
+  }
+
+  /**
+   * Adds column `c` to the selected columns, or takes it out when it is already one of several.
+   * Anything but whole columns gives way to column `c` alone. Returns whether `c` is now selected.
+   */
+  toggleCol(c: number): boolean {
+    const { r0, r1 } = this.range;
+    if (r0 !== 0 || r1 < this.rowCount - 1) {
+      this.selectCols(c, c);
+      return true;
+    }
+    const cols = this.selectedColIndices;
+    if (!cols.includes(c)) {
+      this.selectColSet([...cols, c].sort((a, b) => a - b), c);
+      return true;
+    }
+    const rest = cols.filter((x) => x !== c);
+    if (rest.length === 0) return true;
+    const keep = rest.includes(this.anchor.c) ? this.anchor.c : (rest.find((x) => x > c) ?? rest[rest.length - 1]);
+    this.selectColSet(rest, keep);
+    return false;
+  }
+
+  /** Folds picked columns the range has reached into it, and all of them when they end up side by side. */
+  settleCols(): void {
+    if (this.picked.length > 0) this.selectColSet(this.selectedColIndices, this.focus.c);
+  }
+
+  /** Selects the whole columns `cols`, in order. The run holding `at` becomes the range and the rest are picked. */
+  private selectColSet(cols: number[], at: number): void {
+    const has = new Set(cols);
+    let lo = at;
+    let hi = at;
+    while (has.has(lo - 1)) lo--;
+    while (has.has(hi + 1)) hi++;
+    const a = this.anchor.c;
+    const [from, to] = a === lo || (a !== hi && at !== lo) ? [lo, hi] : [hi, lo];
+    this.picked = cols.filter((x) => x < lo || x > hi);
+    this.anchor = this.clamp({ r: 0, c: from });
+    this.focus = this.clamp({ r: this.rowCount - 1, c: to });
+  }
+
+  private unpick(): void {
+    if (this.picked.length > 0) this.picked = [];
+  }
+
   contains(r: number, c: number): boolean {
     const g = this.range;
-    return r >= g.r0 && r <= g.r1 && c >= g.c0 && c <= g.c1;
+    return r >= g.r0 && r <= g.r1 && ((c >= g.c0 && c <= g.c1) || this.picked.includes(c));
   }
 
   startEdit(mode: 'replace' | 'edit', initial?: string): void {
@@ -185,6 +260,12 @@ export class GridState {
   }
 
   ensureValid(): void {
+    if (this.picked.length > 0) {
+      const last = Math.max(0, this.rowCount - 1);
+      if (this.anchor.r !== 0) this.anchor = { r: 0, c: this.anchor.c };
+      if (this.focus.r !== last) this.focus = { r: last, c: this.focus.c };
+      if (this.picked.some((c) => c >= this.colCount)) this.picked = this.picked.filter((c) => c < this.colCount);
+    }
     const a = this.clamp(this.anchor);
     const f = this.clamp(this.focus);
     if (a.r !== this.anchor.r || a.c !== this.anchor.c) this.anchor = a;

@@ -279,22 +279,24 @@ export class Doc {
   }
 
   /**
-   * Writes a block of values at (r0, c0), growing the sheet if needed. `names` renames the columns
-   * the block lands in, skipping undefined entries. One undo step.
+   * Writes a block of values from row r0, growing the sheet if needed. Its columns start at column
+   * `at`, or go into the existing columns `at` lists. `names` renames the columns the block lands
+   * in, skipping undefined entries. One undo step.
    */
-  applyBlock(r0: number, c0: number, block: string[][], label = 'Paste', names?: (string | undefined)[]): { rows: number; cols: number } {
+  applyBlock(r0: number, at: number | number[], block: string[][], label = 'Paste', names?: (string | undefined)[]): { rows: number; cols: number } {
+    const col = (j: number): number => (typeof at === 'number' ? at + j : at[j]);
     const blockRows = block.length;
     const blockCols = blockWidth(block);
     const addRows = Math.max(0, r0 + blockRows - this.rows.length);
-    const addCols = Math.max(0, c0 + blockCols - this.columns.length);
+    const addCols = typeof at === 'number' ? Math.max(0, at + blockCols - this.columns.length) : 0;
     const prev: CellEdit[] = [];
     for (let r = 0; r < blockRows; r++) {
       for (let c = 0; c < blockCols; c++) {
-        prev.push({ r: r0 + r, c: c0 + c, value: this.cell(r0 + r, c0 + c) });
+        prev.push({ r: r0 + r, c: col(c), value: this.cell(r0 + r, col(c)) });
       }
     }
     const prevCols = this.columns.length;
-    const prevNames = (names ?? []).map((_, j) => this.columns[c0 + j]);
+    const prevNames = (names ?? []).map((_, j) => this.columns[col(j)]);
     this.exec(
       {
         label,
@@ -302,16 +304,16 @@ export class Doc {
           for (let k = 0; k < addCols; k++) this.growColumn();
           for (let k = 0; k < addRows; k++) this.rows.push(new Array<string>(this.columns.length).fill(''));
           for (let r = 0; r < blockRows; r++) {
-            for (let c = 0; c < blockCols; c++) this.rows[r0 + r][c0 + c] = block[r][c] ?? '';
+            for (let c = 0; c < blockCols; c++) this.rows[r0 + r][col(c)] = block[r][c] ?? '';
           }
           names?.forEach((name, j) => {
-            if (name !== undefined && c0 + j < this.columns.length) this.columns[c0 + j] = name;
+            if (name !== undefined && col(j) < this.columns.length) this.columns[col(j)] = name;
           });
         },
         undo: () => {
           for (const e of prev) if (this.rows[e.r] && e.c < prevCols) this.rows[e.r][e.c] = e.value;
           prevNames.forEach((name, j) => {
-            if (c0 + j < prevCols) this.columns[c0 + j] = name;
+            if (col(j) < prevCols) this.columns[col(j)] = name;
           });
           if (addRows > 0) this.rows.length -= addRows;
           if (addCols > 0) {

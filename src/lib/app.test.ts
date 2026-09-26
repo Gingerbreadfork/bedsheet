@@ -617,3 +617,136 @@ describe('editing commands', () => {
     expect(app.doc.rows).toEqual([['x', 'y'], ['z', 'w'], ['', '']]);
   });
 });
+
+describe('columns picked by Ctrl-clicking their headers', () => {
+  function pick(...cols: number[]): void {
+    app.grid.selectCols(cols[0], cols[0]);
+    for (const c of cols.slice(1)) app.grid.toggleCol(c);
+    app.grid.inHeader = true;
+  }
+
+  it('adds and takes out columns, joining them when they end up side by side', () => {
+    load('a,b,c,d,e\n1,2,3,4,5\n');
+    pick(0, 2);
+    expect(app.grid.selectedColIndices).toEqual([0, 2]);
+    expect(app.grid.isSplit).toBe(true);
+    app.grid.toggleCol(1);
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.range).toMatchObject({ c0: 0, c1: 2 });
+    expect(app.grid.toggleCol(1)).toBe(false);
+    expect(app.grid.selectedColIndices).toEqual([0, 2]);
+    app.grid.toggleCol(0);
+    expect(app.grid.selectedColIndices).toEqual([2]);
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.toggleCol(2)).toBe(true);
+    expect(app.grid.selectedColIndices).toEqual([2]);
+  });
+
+  it('starts over from a single cell, and a plain click drops the picked columns', () => {
+    load('a,b,c\n1,2,3\n4,5,6\n');
+    app.grid.select(1, 0, false);
+    app.grid.toggleCol(2);
+    expect(app.grid.selectedColIndices).toEqual([2]);
+    app.grid.toggleCol(0);
+    app.grid.select(0, 1, false);
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.selectedColIndices).toEqual([1]);
+  });
+
+  it('folds picked columns into a range stretched across them', () => {
+    load('a,b,c,d,e\n1,2,3,4,5\n');
+    pick(0, 3);
+    app.grid.extendCols(1);
+    app.grid.settleCols();
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.range).toMatchObject({ c0: 0, c1: 3 });
+  });
+
+  it('copies only those columns, with their names', async () => {
+    vi.spyOn(clipboard, 'write').mockResolvedValue();
+    load('a,b,c,d\n1,2,3,4\n5,6,7,8\n');
+    pick(0, 2, 3);
+    const { text, html } = app.selectionClip();
+    expect(text).toBe('a\tc\td\n1\t3\t4\n5\t7\t8\n');
+    expect(html).toContain('<thead><tr><th>a</th><th>c</th><th>d</th></tr></thead>');
+    await app.copy();
+    expect(app.toasts.at(-1)?.text).toBe('Copied 6 cells with headers');
+  });
+
+  it('clears, fills and deletes only those columns', () => {
+    load('a,b,c,d\n1,2,3,4\n5,6,7,8\n');
+    pick(1, 3);
+    app.clearSelection();
+    expect(app.doc.rows).toEqual([['1', '', '3', ''], ['5', '', '7', '']]);
+    expect(app.grid.selectedColIndices).toEqual([1, 3]);
+    app.undo();
+    app.fillRight();
+    expect(app.doc.rows).toEqual([['1', '2', '3', '2'], ['5', '6', '7', '6']]);
+    app.undo();
+    app.deleteColumns();
+    expect(app.doc.columns).toEqual(['a', 'c']);
+    expect(app.doc.rows).toEqual([['1', '3'], ['5', '7']]);
+    expect(app.grid.isSplit).toBe(false);
+    app.undo();
+    expect(app.doc.rows).toEqual([['1', '2', '3', '4'], ['5', '6', '7', '8']]);
+  });
+
+  it('pastes a block into them column by column', () => {
+    load('a,b,c,d\n1,2,3,4\n5,6,7,8\n');
+    pick(0, 2);
+    app.grid.inHeader = false;
+    const { text } = app.selectionClip();
+    pick(1, 3);
+    app.pasteText(text);
+    expect(app.doc.rows).toEqual([['1', '1', '3', '3'], ['5', '5', '7', '7']]);
+    expect(app.grid.selectedColIndices).toEqual([1, 3]);
+    app.pasteText('x');
+    expect(app.doc.rows).toEqual([['1', 'x', '3', 'x'], ['5', 'x', '7', 'x']]);
+  });
+
+  it('takes a pasted header row that repeats their names out, and grows the rows to fit', () => {
+    load('a,b,c,d\n1,2,3,4\n');
+    pick(1, 3);
+    app.pasteText('b\td\nx\ty\nz\tw', '<table><thead><tr><th>b</th><th>d</th></tr></thead><tbody><tr><td>x</td><td>y</td></tr><tr><td>z</td><td>w</td></tr></tbody></table>');
+    expect(app.doc.rows).toEqual([['1', 'x', '3', 'y'], ['', 'z', '', 'w']]);
+    expect(app.grid.selectedColIndices).toEqual([1, 3]);
+    expect(app.grid.range).toMatchObject({ r0: 0, r1: 1 });
+  });
+
+  it('refuses a block wider than the picked columns', () => {
+    load('a,b,c,d\n1,2,3,4\n');
+    pick(0, 2);
+    app.pasteText('x\ty\tz');
+    expect(app.doc.rows).toEqual([['1', '2', '3', '4']]);
+    expect(app.toasts.at(-1)?.text).toBe('Select 3 columns to paste into, or just the first');
+  });
+
+  it('limits a search to those columns', () => {
+    load('a,b,c\nx,x,x\nx,x,x\n');
+    pick(0, 2);
+    app.toggleScope();
+    expect(app.scope?.label).toBe('2 columns');
+    find('x');
+    expect(app.grid.matches).toEqual([{ r: 0, c: 0 }, { r: 0, c: 2 }, { r: 1, c: 0 }, { r: 1, c: 2 }]);
+  });
+
+  it('will not move them, and inserts beside the outermost', () => {
+    load('a,b,c,d\n1,2,3,4\n');
+    pick(1, 3);
+    app.moveColumns(-1);
+    expect(app.doc.columns).toEqual(['a', 'b', 'c', 'd']);
+    app.insertColumn('right');
+    expect(app.doc.columns).toEqual(['a', 'b', 'c', 'd', 'Column 5']);
+    expect(app.grid.isSplit).toBe(false);
+  });
+
+  it('stay whole columns when rows come and go', () => {
+    load('a,b,c\n1,2,3\n4,5,6\n');
+    pick(0, 2);
+    app.doc.insertRows(2, 3);
+    expect(app.grid.range).toMatchObject({ r0: 0, r1: 4 });
+    expect(app.grid.selectedColIndices).toEqual([0, 2]);
+    app.undo();
+    expect(app.grid.range).toMatchObject({ r0: 0, r1: 1 });
+  });
+});

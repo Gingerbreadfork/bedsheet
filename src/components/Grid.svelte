@@ -103,6 +103,8 @@
   let active = $derived(grid.anchor);
   let matchIndex = $derived(grid.matchIndex);
   let currentMatch = $derived(matchIndex >= 0 ? grid.matches[matchIndex] : null);
+  let colRuns = $derived(grid.colRuns);
+  let selCols = $derived(new Set(grid.selectedColIndices));
   let fullRows = $derived(range.c0 === 0 && range.c1 === colCount - 1 && colCount > 0);
   let fullCols = $derived(range.r0 === 0 && range.r1 === rowCount - 1 && rowCount > 0);
 
@@ -112,16 +114,17 @@
     return Math.min(Math.max(y, vTop - OFFSCREEN), vTop + viewH + OFFSCREEN);
   }
 
-  let selRect = $derived.by(() => {
-    if (rowCount === 0 || colCount === 0) return null;
+  let selRects = $derived.by(() => {
+    if (rowCount === 0 || colCount === 0) return [];
     const top = nearView(range.r0 * rowH);
     const bottom = nearView((range.r1 + 1) * rowH);
-    return {
-      left: gutterW + colLefts[range.c0],
+    return colRuns.map((run) => ({
+      c0: run.c0,
+      left: gutterW + colLefts[run.c0],
       top: headH + top + shift,
-      width: colLefts[range.c1 + 1] - colLefts[range.c0],
+      width: colLefts[run.c1 + 1] - colLefts[run.c0],
       height: Math.max(0, bottom - top),
-    };
+    }));
   });
   let activeRect = $derived.by(() => {
     if (rowCount === 0 || colCount === 0) return null;
@@ -391,10 +394,16 @@
       case 'header':
         if (grid.editingHeader === hit.c) return;
         commitHeader();
-        if (e.shiftKey) grid.selectCols(grid.anchor.c, hit.c);
-        else grid.selectCols(hit.c, hit.c);
+        if (e.ctrlKey || e.metaKey) {
+          if (grid.toggleCol(hit.c)) drag = { kind: 'cols' };
+        } else if (e.shiftKey) {
+          grid.extendCols(hit.c);
+          drag = { kind: 'cols' };
+        } else {
+          grid.selectCols(hit.c, hit.c);
+          drag = { kind: 'cols' };
+        }
         grid.inHeader = true;
-        drag = { kind: 'cols' };
         break;
       case 'gutter':
         if (e.shiftKey) grid.selectRows(grid.anchor.r, hit.r);
@@ -447,7 +456,7 @@
     const p = cellUnderPointer(e);
     if (drag.kind === 'cells') grid.extendTo(p.r, p.c, false);
     else if (drag.kind === 'rows') grid.extendTo(p.r, colCount - 1, false);
-    else if (drag.kind === 'cols') grid.extendTo(rowCount - 1, p.c, false);
+    else if (drag.kind === 'cols') grid.extendCols(p.c);
   }
 
   function scheduleAutoScroll(): void {
@@ -478,6 +487,7 @@
   function onPointerUp(e: PointerEvent): void {
     if (!drag) return;
     if (viewport?.hasPointerCapture(e.pointerId)) viewport.releasePointerCapture(e.pointerId);
+    if (drag.kind === 'cols') grid.settleCols();
     drag = null;
     lastPointer = null;
     if (autoScrollRaf) cancelAnimationFrame(autoScrollRaf);
@@ -512,7 +522,7 @@
       if (!grid.contains(hit.r, hit.c)) grid.select(hit.r, hit.c, false);
       items = cellMenu();
     } else if (hit.kind === 'header') {
-      if (!(fullCols && hit.c >= range.c0 && hit.c <= range.c1)) grid.selectCols(hit.c, hit.c);
+      if (!(fullCols && selCols.has(hit.c))) grid.selectCols(hit.c, hit.c);
       items = columnMenu();
     } else if (hit.kind === 'gutter') {
       if (!(fullRows && hit.r >= range.r0 && hit.r <= range.r1)) grid.selectRows(hit.r, hit.r);
@@ -529,7 +539,7 @@
     return range.r1 > range.r0 ? `${range.r1 - range.r0 + 1} rows` : 'row';
   }
   function colWord(): string {
-    return range.c1 > range.c0 ? `${range.c1 - range.c0 + 1} columns` : 'column';
+    return selCols.size > 1 ? `${selCols.size} columns` : 'column';
   }
 
   function cellMenu(): MenuItem[] {
@@ -565,7 +575,8 @@
   }
 
   function columnMenu(): MenuItem[] {
-    const c = range.c0;
+    const c = colRuns[0]?.c0 ?? range.c0;
+    const split = grid.isSplit;
     return [
       { label: 'Sort ascending', run: () => app.sort('asc') },
       { label: 'Sort descending', run: () => app.sort('desc') },
@@ -577,8 +588,8 @@
       'sep',
       { label: 'Insert column left', run: () => app.insertColumn('left') },
       { label: 'Insert column right', run: () => app.insertColumn('right') },
-      { label: 'Move left', shortcut: 'Alt+ArrowLeft', disabled: range.c0 === 0, run: () => app.moveColumns(-1) },
-      { label: 'Move right', shortcut: 'Alt+ArrowRight', disabled: range.c1 >= colCount - 1, run: () => app.moveColumns(1) },
+      { label: 'Move left', shortcut: 'Alt+ArrowLeft', disabled: split || range.c0 === 0, run: () => app.moveColumns(-1) },
+      { label: 'Move right', shortcut: 'Alt+ArrowRight', disabled: split || range.c1 >= colCount - 1, run: () => app.moveColumns(1) },
       'sep',
       { label: `Delete ${colWord()}`, danger: true, run: () => app.deleteColumns() },
     ];
@@ -604,8 +615,10 @@
       case 'Tab': {
         const back = e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey);
         const next = Math.min(colCount - 1, Math.max(0, c + (back ? -1 : 1)));
-        if (e.shiftKey && e.key !== 'Tab') grid.selectCols(grid.anchor.c, next);
-        else grid.selectCols(next, next);
+        if (e.shiftKey && e.key !== 'Tab') {
+          grid.extendCols(next);
+          grid.settleCols();
+        } else grid.selectCols(next, next);
         scrollIntoView({ r: Math.max(0, Math.floor(vTop / rowH)), c: next });
         return true;
       }
@@ -848,7 +861,7 @@
       <div class="corner" class:all={fullRows && fullCols}></div>
       {#each visibleCols as c (c)}
         {@const w = colLefts[c + 1] - colLefts[c]}
-        {@const inSel = c >= range.c0 && c <= range.c1}
+        {@const inSel = selCols.has(c)}
         <div
           class="hcell"
           class:sel={inSel}
@@ -932,14 +945,16 @@
       <span class="addrow-label">Add row</span>
     </button>
 
-    {#if selRect && !grid.isSingle}
-      <div
-        class="sel-rect"
-        style:left="{selRect.left}px"
-        style:top="{selRect.top}px"
-        style:width="{selRect.width}px"
-        style:height="{selRect.height}px"
-      ></div>
+    {#if !grid.isSingle}
+      {#each selRects as rect (rect.c0)}
+        <div
+          class="sel-rect"
+          style:left="{rect.left}px"
+          style:top="{rect.top}px"
+          style:width="{rect.width}px"
+          style:height="{rect.height}px"
+        ></div>
+      {/each}
     {/if}
     {#if activeRect && !grid.inHeader}
       <div
