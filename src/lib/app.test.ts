@@ -642,6 +642,18 @@ describe('columns picked by Ctrl-clicking their headers', () => {
     expect(app.grid.selectedColIndices).toEqual([2]);
   });
 
+  it('makes the clicked column the active one when the old one ends up in the middle', () => {
+    load('a,b,c,d,e\n1,2,3,4,5\n');
+    app.grid.selectCols(3, 1);
+    app.grid.toggleCol(4);
+    expect(app.grid.anchor.c).toBe(4);
+    expect(app.grid.focus.c).toBe(1);
+    app.grid.selectCols(0, 4);
+    app.grid.toggleCol(0);
+    expect(app.grid.anchor.c).toBe(1);
+    expect(app.grid.focus.c).toBe(4);
+  });
+
   it('starts over from a single cell, and a plain click drops the picked columns', () => {
     load('a,b,c\n1,2,3\n4,5,6\n');
     app.grid.select(1, 0, false);

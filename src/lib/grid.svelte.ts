@@ -225,7 +225,10 @@ export class GridState {
     if (this.picked.length > 0) this.selectColSet(this.selectedColIndices, this.focus.c);
   }
 
-  /** Selects the whole columns `cols`, in order. The run holding `at` becomes the range and the rest are picked. */
+  /**
+   * Selects the whole columns `cols`, in order. The run holding `at` becomes the range and the rest are
+   * picked. The anchor stays put when it is an end of that run, and otherwise moves to `at` if it can.
+   */
   private selectColSet(cols: number[], at: number): void {
     const has = new Set(cols);
     let lo = at;
@@ -233,7 +236,8 @@ export class GridState {
     while (has.has(lo - 1)) lo--;
     while (has.has(hi + 1)) hi++;
     const a = this.anchor.c;
-    const [from, to] = a === lo || (a !== hi && at !== lo) ? [lo, hi] : [hi, lo];
+    const anchor = a === lo || a === hi ? a : at === hi ? hi : lo;
+    const [from, to] = anchor === lo ? [lo, hi] : [hi, lo];
     this.picked = cols.filter((x) => x < lo || x > hi);
     this.anchor = this.clamp({ r: 0, c: from });
     this.focus = this.clamp({ r: this.rowCount - 1, c: to });
