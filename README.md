@@ -126,7 +126,7 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 | Cancel | Esc |
 | Clear cells | Delete or Backspace |
 | Cut, copy, paste | Ctrl+X, Ctrl+C, Ctrl+V |
-| Copy with column names | Ctrl+Shift+C, or Ctrl+C with columns selected by their headers |
+| Copy with column names | Ctrl+Shift+C, or Ctrl+C with columns selected by their headers or the whole sheet selected |
 | Fill down, fill right | Ctrl+D, Ctrl+R |
 | Undo, redo | Ctrl+Z, Ctrl+Shift+Z |
 

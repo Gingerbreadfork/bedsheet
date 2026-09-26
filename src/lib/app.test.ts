@@ -264,6 +264,24 @@ describe('clipboard', () => {
     expect(app.doc.rows).toEqual([['30'], ['41']]);
   });
 
+  it('copies the whole sheet with its column names, wherever the cursor was', async () => {
+    vi.spyOn(clipboard, 'write').mockResolvedValue();
+    load('name,age\nAlice,30\nBob,41\n');
+    app.grid.select(1, 1, false);
+    app.grid.selectAll();
+    expect(app.selectionClip().text).toBe('name\tage\nAlice\t30\nBob\t41\n');
+    await app.copy();
+    expect(app.toasts.at(-1)?.text).toBe('Copied 4 cells with headers');
+    app.grid.selectCols(1, 1);
+    app.grid.inHeader = true;
+    app.grid.selectAll();
+    expect(app.grid.inHeader).toBe(false);
+    expect(app.selectionClip().text).toBe('name\tage\nAlice\t30\nBob\t41\n');
+    load('Alice,30\nBob,41\n');
+    app.grid.selectAll();
+    expect(app.selectionClip().text).toBe('Alice\t30\nBob\t41\n');
+  });
+
   it('copies the column names when there are no rows', async () => {
     vi.spyOn(clipboard, 'write').mockResolvedValue();
     load('name,age,city\n');
@@ -320,7 +338,7 @@ describe('clipboard', () => {
   it('never takes a plain copy for a header', () => {
     load('name,city\nAlice,Paris\nBob,Rome\n');
     app.grid.selectAll();
-    const text = app.selectionClip().text;
+    const text = app.selectionClip(false).text;
     blank();
     app.pasteText(text);
     expect(app.doc.hasHeader).toBe(false);

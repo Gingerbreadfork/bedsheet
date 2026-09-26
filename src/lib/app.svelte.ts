@@ -582,6 +582,17 @@ export class AppState {
     return this.doc.loaded && this.doc.hasHeader && this.doc.rows.length === 0 && this.grid.colCount > 0;
   }
 
+  /**
+   * Whether a plain copy takes the column names along: when the columns were selected by their
+   * headers, when the whole sheet is selected, or when the names are all there is.
+   */
+  get copiesNames(): boolean {
+    const g = this.grid;
+    const { r0, c0, r1, c1 } = g.range;
+    const whole = this.hasCells && !g.isSingle && r0 === 0 && c0 === 0 && r1 === g.rowCount - 1 && c1 === g.colCount - 1;
+    return g.inHeader || whole || this.namesOnly;
+  }
+
   /** Whether a copy has something to take: the cells, or the column names when there are no rows. */
   get canCopy(): boolean {
     return this.hasCells || this.namesOnly;
@@ -602,11 +613,10 @@ export class AppState {
 
   /**
    * The selection as clipboard text, and as an HTML table for documents. The column names come
-   * along when asked for, when the columns were selected by their headers, or when there are no
-   * rows to copy, but never when the sheet has no header row and the columns are only lettered.
-   * The block is remembered so pasting it back keeps every cell intact.
+   * along when asked for or `copiesNames` says so, but never when the sheet has no header row and
+   * the columns are only lettered. The block is remembered so pasting it back keeps every cell intact.
    */
-  selectionClip(withHeaders = this.grid.inHeader || this.namesOnly): ClipContents {
+  selectionClip(withHeaders = this.copiesNames): ClipContents {
     const names = withHeaders && this.doc.loaded && this.doc.hasHeader && this.grid.colCount > 0;
     if (!this.hasCells && !names) return { text: '', html: null };
     const { r0, r1 } = this.grid.range;
@@ -846,12 +856,12 @@ export class AppState {
     );
   }
 
-  /** Says how much was copied or cut, and that the headers went along when the columns were selected by them. */
+  /** Says how much was copied or cut, and whether the headers went along. */
   toastCells(verb: string, single: boolean): void {
     const { r0, r1 } = this.grid.range;
     const cols = this.grid.selectedColIndices.length;
     const n = (r1 - r0 + 1) * cols;
-    const headers = this.grid.inHeader && this.doc.hasHeader ? ` with ${cols === 1 ? 'the header' : 'headers'}` : '';
+    const headers = this.copiesNames && this.doc.hasHeader ? ` with ${cols === 1 ? 'the header' : 'headers'}` : '';
     if (this.namesOnly) this.toast(`${verb} ${cols} column ${cols === 1 ? 'name' : 'names'}`);
     else if (n > 1) this.toast(`${verb} ${n} cells${headers}`);
     else if (headers) this.toast(`${verb} cell${headers}`);

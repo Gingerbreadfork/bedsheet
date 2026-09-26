@@ -176,6 +176,7 @@ export class GridState {
 
   selectAll(): void {
     this.unpick();
+    this.inHeader = false;
     this.anchor = { r: 0, c: 0 };
     this.focus = this.clamp({ r: this.rowCount - 1, c: this.colCount - 1 });
   }
