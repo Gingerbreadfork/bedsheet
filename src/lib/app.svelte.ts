@@ -180,8 +180,11 @@ export class AppState {
         if (s) this.bindings.push({ s: parseShortcut(s), cmd });
       }
     }
+    this.doc.onRowChange(() => {
+      if (this.grid.pickedRows.length > 0) this.grid.pickedRows = [];
+    });
     this.doc.onColumnChange((change) => {
-      if (this.grid.picked.length > 0) this.grid.picked = [];
+      if (this.grid.pickedCols.length > 0) this.grid.pickedCols = [];
       if (change.kind === 'reset') {
         this.grid.widths = [];
         return;
@@ -602,10 +605,8 @@ export class AppState {
   private selectionEdits(value: (r: number, c: number) => string): CellEdit[] {
     const edits: CellEdit[] = [];
     if (!this.hasCells) return edits;
-    const { r0, r1 } = this.grid.range;
     const cols = this.grid.selectedColIndices;
-    for (let vr = r0; vr <= r1; vr++) {
-      const r = this.grid.dataRow(vr);
+    for (const r of this.grid.selectedRowIndices) {
       for (const c of cols) edits.push({ r, c, value: value(r, c) });
     }
     return edits;
@@ -619,13 +620,12 @@ export class AppState {
   selectionClip(withHeaders = this.copiesNames): ClipContents {
     const names = withHeaders && this.doc.loaded && this.doc.hasHeader && this.grid.colCount > 0;
     if (!this.hasCells && !names) return { text: '', html: null };
-    const { r0, r1 } = this.grid.range;
     const cols = this.grid.selectedColIndices;
     const rows: string[][] = [];
     if (names) rows.push(cols.map((c) => this.doc.columnLabel(c)));
     if (this.hasCells) {
-      for (let vr = r0; vr <= r1; vr++) {
-        const row = this.doc.rows[this.grid.dataRow(vr)];
+      for (const r of this.grid.selectedRowIndices) {
+        const row = this.doc.rows[r];
         rows.push(cols.map((c) => row[c] ?? ''));
       }
     }
@@ -700,27 +700,36 @@ export class AppState {
     return readClipboard(text, html);
   }
 
-  /** Pastes at the selection. Separately selected columns take the block's columns in order, as if side by side. */
+  /**
+   * Pastes at the selection. Separately selected columns take the block's columns in order, as if
+   * side by side, and separately selected rows take its rows the same way.
+   */
   private pasteBlock({ rows, header }: ClipBlock): void {
     const g = this.grid;
-    const { r0, c0, r1 } = g.range;
+    const { r0, c0 } = g.range;
     if (g.viewRows && g.rowCount === 0) {
       this.toast('No rows are showing to paste into');
       return;
     }
     const split = g.isSplit;
+    const splitCols = g.splitCols;
     const cols = g.selectedColIndices;
-    const at = (j: number): number => (split ? cols[j] : c0 + j);
+    const at = (j: number): number => (splitCols ? cols[j] : c0 + j);
+    const rowList = g.splitRows ? g.selectedViewRows : null;
+    const rowAt = (i: number): number => (rowList ? rowList[i] : r0 + i);
+    const runs = g.rowRuns;
+    const top = runs[0].r0;
+    const bottom = runs[runs.length - 1].r1;
     let block = rows;
     const single = block.length === 1 && block[0].length === 1;
     if (single && !g.isSingle) {
       const v = block[0][0];
       this.doc.setCells(this.selectionEdits(() => v), 'Paste');
-      this.widen(cols, r0, r1);
-      this.toast(`Pasted into ${(r1 - r0 + 1) * cols.length} cells`);
+      this.widen(cols, top, bottom);
+      this.toast(`Pasted into ${g.selectedRowCount * cols.length} cells`);
       return;
     }
-    if (split && blockWidth(block) > cols.length) {
+    if (splitCols && blockWidth(block) > cols.length) {
       this.toast(`Select ${blockWidth(block)} columns to paste into, or just the first`);
       return;
     }
@@ -731,40 +740,45 @@ export class AppState {
     const placed = header === true && block.length > 1 ? this.placeHeader(block, at, !g.viewRows) : null;
     if (placed) block = block.slice(1);
     const names = placed?.names;
+    if (rowList && block.length > rowList.length) {
+      this.toast(`Select ${block.length} rows to paste into, or just the first`);
+      return;
+    }
     const blockCols = blockWidth(block);
-    const selRows = r1 - r0 + 1;
+    const selRows = g.selectedRowCount;
     const selCols = cols.length;
     const tiles = !names && (selRows > block.length || selCols > blockCols) && selRows % block.length === 0 && selCols % blockCols === 0;
     if (tiles) {
       const edits: CellEdit[] = [];
       for (let i = 0; i < selRows; i++) {
-        const r = g.dataRow(r0 + i);
+        const r = g.dataRow(rowAt(i));
         for (let j = 0; j < selCols; j++) edits.push({ r, c: at(j), value: block[i % block.length][j % blockCols] ?? '' });
       }
       this.doc.setCells(edits, 'Paste');
-      this.widen(cols, r0, r1);
+      this.widen(cols, top, bottom);
       this.toast(`Pasted into ${selRows} × ${selCols}`);
       return;
     }
-    const landed = split ? cols.slice(0, blockCols) : Array.from({ length: blockCols }, (_, j) => c0 + j);
+    const landed = splitCols ? cols.slice(0, blockCols) : Array.from({ length: blockCols }, (_, j) => c0 + j);
     if (g.viewRows) {
-      const room = split ? cols.length : this.doc.colCount - c0;
+      const room = splitCols ? cols.length : this.doc.colCount - c0;
+      const rowRoom = rowList ? rowList.length : g.rowCount - r0;
       const edits: CellEdit[] = [];
-      for (let i = 0; i < block.length && r0 + i < g.rowCount; i++) {
-        const r = g.dataRow(r0 + i);
+      for (let i = 0; i < block.length && i < rowRoom; i++) {
+        const r = g.dataRow(rowAt(i));
         for (let j = 0; j < block[i].length && j < room; j++) {
           edits.push({ r, c: at(j), value: block[i][j] });
         }
       }
       this.doc.setCells(edits, 'Paste');
     } else {
-      this.doc.applyBlock(r0, split ? landed : c0, block, 'Paste', names);
+      this.doc.applyBlock(rowList ? rowList.slice(0, block.length) : r0, splitCols ? landed : c0, block, 'Paste', names);
     }
     if (!split) {
       g.anchor = { r: r0, c: c0 };
       g.extendTo(r0 + block.length - 1, c0 + blockCols - 1, false);
     }
-    this.widen(landed, r0, r0 + block.length - 1);
+    this.widen(landed, rowAt(0), rowAt(block.length - 1));
     const size = `${block.length} × ${blockCols}`;
     if (names) this.toast(`Pasted ${size}, with its header row as column names`, 'info', 3600);
     else if (placed) this.toast(`Pasted ${size}, leaving out its header row`, 'info', 3600);
@@ -836,12 +850,13 @@ export class AppState {
   }
 
   fillDown(): void {
-    const { r0, r1 } = this.grid.range;
-    if (!this.hasCells || r1 === r0) return;
+    const rows = this.grid.selectedRowIndices;
+    const first = rows[0];
+    if (!this.hasCells || rows.length < 2) return;
     const top: Record<number, string> = {};
-    for (const c of this.grid.selectedColIndices) top[c] = this.doc.cell(this.grid.dataRow(r0), c);
+    for (const c of this.grid.selectedColIndices) top[c] = this.doc.cell(first, c);
     this.doc.setCells(
-      this.selectionEdits((_, c) => top[c]).filter((e) => e.r !== this.grid.dataRow(r0)),
+      this.selectionEdits((_, c) => top[c]).filter((e) => e.r !== first),
       'Fill down',
     );
   }
@@ -858,9 +873,8 @@ export class AppState {
 
   /** Says how much was copied or cut, and whether the headers went along. */
   toastCells(verb: string, single: boolean): void {
-    const { r0, r1 } = this.grid.range;
     const cols = this.grid.selectedColIndices.length;
-    const n = (r1 - r0 + 1) * cols;
+    const n = this.grid.selectedRowCount * cols;
     const headers = this.copiesNames && this.doc.hasHeader ? ` with ${cols === 1 ? 'the header' : 'headers'}` : '';
     if (this.namesOnly) this.toast(`${verb} ${cols} column ${cols === 1 ? 'name' : 'names'}`);
     else if (n > 1) this.toast(`${verb} ${n} cells${headers}`);
@@ -883,6 +897,10 @@ export class AppState {
       this.toast('Show all rows before moving them');
       return;
     }
+    if (g.splitRows) {
+      this.toast('Only rows that sit side by side can be moved together');
+      return;
+    }
     this.commitPending();
     const { r0, r1 } = g.range;
     const { anchor, focus } = g;
@@ -894,7 +912,7 @@ export class AppState {
   moveColumns(delta: 1 | -1): void {
     const g = this.grid;
     if (!this.hasCells) return;
-    if (g.isSplit) {
+    if (g.splitCols) {
       this.toast('Only columns that sit side by side can be moved together');
       return;
     }
@@ -911,8 +929,10 @@ export class AppState {
     if (!this.doc.loaded) return;
     this.commitPending();
     const g = this.grid;
-    const { r0, r1 } = g.range;
-    const count = data ? data.length : r1 - r0 + 1;
+    const runs = g.rowRuns;
+    const r0 = runs[0].r0;
+    const r1 = runs[runs.length - 1].r1;
+    const count = data ? data.length : g.selectedRowCount;
     const empty = g.rowCount === 0;
     const at = empty ? this.doc.rowCount : where === 'above' ? g.dataRow(r0) : g.dataRow(r1) + 1;
     const viewAt = empty ? 0 : where === 'above' ? r0 : r1 + 1;
@@ -934,7 +954,7 @@ export class AppState {
     this.commitPending();
     const g = this.grid;
     const indices = g.selectedRowIndices;
-    const { r0 } = g.range;
+    const r0 = g.rowRuns[0].r0;
     const col = g.anchor.c;
     this.withPreservedView(() => {
       this.doc.deleteRows(indices);
@@ -1168,11 +1188,12 @@ export class AppState {
       const wholeColumns = g.isSingle || (r0 === 0 && r1 === g.rowCount - 1);
       const names = cols.length === 1 ? this.doc.columnLabel(cols[0]) : `${cols.length} columns`;
       if (wholeColumns) {
-        const only = g.isSplit ? new Set(cols) : null;
+        const only = g.splitCols ? new Set(cols) : null;
         this.scope = { c0: cols[0], c1: cols[cols.length - 1], r0: 0, r1: Infinity, rows: null, cols: only, label: names };
       } else {
-        const rows = g.viewRows ? new Set(g.selectedRowIndices) : null;
-        this.scope = { c0, c1, r0: g.viewRows ? 0 : r0, r1: g.viewRows ? Infinity : r1, rows, cols: null, label: 'selection' };
+        const listed = g.viewRows !== null || g.splitRows;
+        const rows = listed ? new Set(g.selectedRowIndices) : null;
+        this.scope = { c0, c1, r0: listed ? 0 : r0, r1: listed ? Infinity : r1, rows, cols: null, label: 'selection' };
       }
     }
     this.grid.matchIndex = -1;
@@ -1376,8 +1397,8 @@ export class AppState {
 
       { id: 'rows.insertBelow', title: 'Insert row below', group: 'Rows', shortcut: 'Ctrl+Enter', when: loaded, run: () => this.insertRows('below') },
       { id: 'rows.insertAbove', title: 'Insert row above', group: 'Rows', shortcut: 'Ctrl+Shift+Enter', when: loaded, run: () => this.insertRows('above') },
-      { id: 'rows.delete', title: () => (this.grid.range.r1 > this.grid.range.r0 ? 'Delete selected rows' : 'Delete row'), group: 'Rows', shortcut: 'Ctrl+Shift+K', when: hasRows, run: () => this.deleteRows() },
-      { id: 'rows.duplicate', title: () => (this.grid.range.r1 > this.grid.range.r0 ? 'Duplicate selected rows' : 'Duplicate row'), group: 'Rows', shortcut: 'Ctrl+Shift+D', when: hasRows, run: () => this.duplicateRows() },
+      { id: 'rows.delete', title: () => (this.grid.selectedRowCount > 1 ? 'Delete selected rows' : 'Delete row'), group: 'Rows', shortcut: 'Ctrl+Shift+K', when: hasRows, run: () => this.deleteRows() },
+      { id: 'rows.duplicate', title: () => (this.grid.selectedRowCount > 1 ? 'Duplicate selected rows' : 'Duplicate row'), group: 'Rows', shortcut: 'Ctrl+Shift+D', when: hasRows, run: () => this.duplicateRows() },
       { id: 'rows.moveUp', title: 'Move rows up', group: 'Rows', shortcut: 'Alt+ArrowUp', when: hasRows, run: () => this.moveRows(-1) },
       { id: 'rows.moveDown', title: 'Move rows down', group: 'Rows', shortcut: 'Alt+ArrowDown', when: hasRows, run: () => this.moveRows(1) },
       { id: 'rows.goto', title: 'Go to row…', group: 'Rows', shortcut: 'Ctrl+G', global: true, when: hasRows, run: () => this.promptGotoRow() },

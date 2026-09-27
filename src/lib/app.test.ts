@@ -800,3 +800,190 @@ describe('columns picked by Ctrl-clicking their headers', () => {
     expect(app.grid.range).toMatchObject({ r0: 0, r1: 1 });
   });
 });
+
+describe('rows picked by Ctrl-clicking their numbers', () => {
+  function pick(...rows: number[]): void {
+    app.grid.selectRows(rows[0], rows[0]);
+    for (const r of rows.slice(1)) app.grid.toggleRow(r);
+  }
+
+  it('adds and takes out rows, joining them when they end up side by side', () => {
+    load('a,b\n1,2\n3,4\n5,6\n7,8\n');
+    pick(0, 2);
+    expect(app.grid.selectedViewRows).toEqual([0, 2]);
+    expect(app.grid.isSplit).toBe(true);
+    app.grid.toggleRow(1);
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.range).toMatchObject({ r0: 0, r1: 2, c0: 0, c1: 1 });
+    expect(app.grid.toggleRow(1)).toBe(false);
+    expect(app.grid.selectedViewRows).toEqual([0, 2]);
+    app.grid.toggleRow(0);
+    expect(app.grid.selectedViewRows).toEqual([2]);
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.toggleRow(2)).toBe(true);
+    expect(app.grid.selectedViewRows).toEqual([2]);
+  });
+
+  it('splits a block when a row inside it is taken out', () => {
+    load('n\na\nb\nc\nd\ne\n');
+    app.grid.selectRows(0, 4);
+    app.grid.toggleRow(2);
+    expect(app.grid.selectedViewRows).toEqual([0, 1, 3, 4]);
+    expect(app.grid.selectedRowCount).toBe(4);
+    expect(app.grid.range).toMatchObject({ r0: 0, r1: 1 });
+  });
+
+  it('makes the clicked row the active one when the old one ends up in the middle', () => {
+    load('n\na\nb\nc\nd\ne\n');
+    app.grid.selectRows(3, 1);
+    app.grid.toggleRow(4);
+    expect(app.grid.anchor.r).toBe(4);
+    expect(app.grid.focus.r).toBe(1);
+    app.grid.selectRows(0, 4);
+    app.grid.toggleRow(0);
+    expect(app.grid.anchor.r).toBe(1);
+    expect(app.grid.focus.r).toBe(4);
+  });
+
+  it('starts over from a single cell or picked columns, and a plain click drops the picked rows', () => {
+    load('a,b,c\n1,2,3\n4,5,6\n7,8,9\n');
+    app.grid.select(1, 1, false);
+    app.grid.toggleRow(2);
+    expect(app.grid.selectedViewRows).toEqual([2]);
+    expect(app.grid.range).toMatchObject({ c0: 0, c1: 2 });
+    app.grid.toggleRow(0);
+    app.grid.toggleCol(0);
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.selectedColIndices).toEqual([0]);
+    app.grid.toggleCol(2);
+    app.grid.toggleRow(1);
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.selectedViewRows).toEqual([1]);
+    expect(app.grid.selectedColIndices).toEqual([0, 1, 2]);
+    app.grid.toggleRow(0);
+    app.grid.select(2, 0, false);
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.selectedViewRows).toEqual([2]);
+  });
+
+  it('folds picked rows into a range stretched across them', () => {
+    load('n\na\nb\nc\nd\ne\n');
+    pick(0, 3);
+    app.grid.extendRows(1);
+    app.grid.settleRows();
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.range).toMatchObject({ r0: 0, r1: 3 });
+  });
+
+  it('copies only those rows', async () => {
+    vi.spyOn(clipboard, 'write').mockResolvedValue();
+    load('a,b\n1,2\n3,4\n5,6\n7,8\n');
+    pick(0, 2, 3);
+    expect(app.selectionClip().text).toBe('1\t2\n5\t6\n7\t8\n');
+    await app.copy();
+    expect(app.toasts.at(-1)?.text).toBe('Copied 6 cells');
+  });
+
+  it('clears, fills down and deletes only those rows', () => {
+    load('a,b\n1,2\n3,4\n5,6\n7,8\n');
+    pick(1, 3);
+    app.clearSelection();
+    expect(app.doc.rows).toEqual([['1', '2'], ['', ''], ['5', '6'], ['', '']]);
+    expect(app.grid.selectedViewRows).toEqual([1, 3]);
+    app.undo();
+    app.fillDown();
+    expect(app.doc.rows).toEqual([['1', '2'], ['3', '4'], ['5', '6'], ['3', '4']]);
+    app.undo();
+    app.deleteRows();
+    expect(app.doc.rows).toEqual([['1', '2'], ['5', '6']]);
+    expect(app.grid.isSplit).toBe(false);
+    app.undo();
+    expect(app.doc.rows).toEqual([['1', '2'], ['3', '4'], ['5', '6'], ['7', '8']]);
+  });
+
+  it('pastes a block into them row by row', () => {
+    load('a,b\n1,2\n3,4\n5,6\n7,8\n');
+    pick(0, 2);
+    const { text } = app.selectionClip();
+    pick(1, 3);
+    app.pasteText(text);
+    expect(app.doc.rows).toEqual([['1', '2'], ['1', '2'], ['5', '6'], ['5', '6']]);
+    expect(app.grid.selectedViewRows).toEqual([1, 3]);
+    app.pasteText('x');
+    expect(app.doc.rows).toEqual([['1', '2'], ['x', 'x'], ['5', '6'], ['x', 'x']]);
+  });
+
+  it('refuses a block taller than the picked rows', () => {
+    load('a,b\n1,2\n3,4\n5,6\n');
+    pick(0, 2);
+    app.pasteText('x\ny\nz');
+    expect(app.doc.rows).toEqual([['1', '2'], ['3', '4'], ['5', '6']]);
+    expect(app.toasts.at(-1)?.text).toBe('Select 3 rows to paste into, or just the first');
+  });
+
+  it('limits a search to those rows', () => {
+    load('a,b\nx,x\nx,x\nx,x\n');
+    pick(0, 2);
+    app.toggleScope();
+    find('x');
+    expect(app.grid.matches).toEqual([{ r: 0, c: 0 }, { r: 0, c: 1 }, { r: 2, c: 0 }, { r: 2, c: 1 }]);
+  });
+
+  it('will not move them, and inserts and duplicates beside the outermost', () => {
+    load('n\na\nb\nc\nd\n');
+    pick(0, 2);
+    app.moveRows(1);
+    expect(column()).toEqual(['a', 'b', 'c', 'd']);
+    expect(app.toasts.at(-1)?.text).toBe('Only rows that sit side by side can be moved together');
+    app.duplicateRows();
+    expect(column()).toEqual(['a', 'b', 'c', 'a', 'c', 'd']);
+    expect(app.grid.isSplit).toBe(false);
+    app.undo();
+    pick(1, 3);
+    app.insertRows('above');
+    expect(column()).toEqual(['a', '', '', 'b', 'c', 'd']);
+  });
+
+  it('work on the rows a filter shows', () => {
+    load('n,v\nx,1\ny,2\nx,3\ny,4\nx,5\n');
+    app.filterRows = true;
+    find('x');
+    pick(0, 2);
+    expect(app.grid.selectedRowIndices).toEqual([0, 4]);
+    expect(app.selectionClip().text).toBe('x\t1\nx\t5\n');
+    app.pasteText('p\tq\nr\ts');
+    expect(app.doc.rows).toEqual([['p', 'q'], ['y', '2'], ['x', '3'], ['y', '4'], ['r', 's']]);
+    expect(app.grid.selectedRowIndices).toEqual([0, 4]);
+  });
+
+  it('are let go when rows are reordered, taken away or filtered differently', () => {
+    load('n\nb\na\nc\n');
+    pick(0, 2);
+    app.sort('asc');
+    expect(app.grid.isSplit).toBe(false);
+    pick(0, 2);
+    app.undo();
+    expect(app.grid.isSplit).toBe(false);
+    app.grid.select(2, 0, false);
+    app.pasteText('x\ny\nz');
+    expect(app.doc.rowCount).toBe(5);
+    pick(0, 4);
+    app.undo();
+    expect(app.doc.rowCount).toBe(3);
+    expect(app.grid.isSplit).toBe(false);
+    pick(0, 2);
+    app.filterRows = true;
+    find('a');
+    expect(app.grid.isSplit).toBe(false);
+  });
+
+  it('stay whole rows when columns come and go', () => {
+    load('a,b\n1,2\n3,4\n5,6\n');
+    pick(0, 2);
+    app.doc.insertColumn(2);
+    expect(app.grid.range).toMatchObject({ c0: 0, c1: 2 });
+    expect(app.grid.selectedViewRows).toEqual([0, 2]);
+    app.undo();
+    expect(app.grid.range).toMatchObject({ c0: 0, c1: 1 });
+  });
+});

@@ -22,7 +22,6 @@
   let selection = $derived.by(() => {
     void doc.rev;
     if (grid.rowCount === 0 || grid.colCount === 0) return { text: '', type: '', stats: '' };
-    const { r0, r1 } = grid.range;
     const selCols = grid.selectedColIndices;
     const a = grid.anchor;
     const type = inferColumnType(doc.rows, a.c);
@@ -30,15 +29,15 @@
     if (grid.isSingle) {
       return { text: `${doc.columnLabel(a.c)}, row ${(grid.dataRow(a.r) + 1).toLocaleString()}`, type: typeLabel, stats: '' };
     }
-    const rows = r1 - r0 + 1;
+    const rows = grid.selectedRowCount;
     const cols = selCols.length;
     const cells = rows * cols;
     let stats = '';
     if (cells <= 200_000) {
       let sum = 0;
       let count = 0;
-      for (let vr = r0; vr <= r1; vr++) {
-        const row = doc.rows[grid.dataRow(vr)];
+      for (const r of grid.selectedRowIndices) {
+        const row = doc.rows[r];
         for (const c of selCols) {
           const v = row[c];
           if (v && isNumeric(v.trim())) {

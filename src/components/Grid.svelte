@@ -104,6 +104,7 @@
   let matchIndex = $derived(grid.matchIndex);
   let currentMatch = $derived(matchIndex >= 0 ? grid.matches[matchIndex] : null);
   let colRuns = $derived(grid.colRuns);
+  let rowRuns = $derived(grid.rowRuns);
   let selCols = $derived(new Set(grid.selectedColIndices));
   let fullRows = $derived(range.c0 === 0 && range.c1 === colCount - 1 && colCount > 0);
   let fullCols = $derived(range.r0 === 0 && range.r1 === rowCount - 1 && rowCount > 0);
@@ -114,17 +115,23 @@
     return Math.min(Math.max(y, vTop - OFFSCREEN), vTop + viewH + OFFSCREEN);
   }
 
+  function rowSelected(vr: number): boolean {
+    return rowRuns.some((run) => vr >= run.r0 && vr <= run.r1);
+  }
+
   let selRects = $derived.by(() => {
     if (rowCount === 0 || colCount === 0) return [];
-    const top = nearView(range.r0 * rowH);
-    const bottom = nearView((range.r1 + 1) * rowH);
-    return colRuns.map((run) => ({
-      c0: run.c0,
-      left: gutterW + colLefts[run.c0],
-      top: headH + top + shift,
-      width: colLefts[run.c1 + 1] - colLefts[run.c0],
-      height: Math.max(0, bottom - top),
-    }));
+    return rowRuns.flatMap((rows) => {
+      const top = nearView(rows.r0 * rowH);
+      const bottom = nearView((rows.r1 + 1) * rowH);
+      return colRuns.map((cols) => ({
+        key: `${rows.r0}:${cols.c0}`,
+        left: gutterW + colLefts[cols.c0],
+        top: headH + top + shift,
+        width: colLefts[cols.c1 + 1] - colLefts[cols.c0],
+        height: Math.max(0, bottom - top),
+      }));
+    });
   });
   let activeRect = $derived.by(() => {
     if (rowCount === 0 || colCount === 0) return null;
@@ -406,9 +413,15 @@
         grid.inHeader = true;
         break;
       case 'gutter':
-        if (e.shiftKey) grid.selectRows(grid.anchor.r, hit.r);
-        else grid.selectRows(hit.r, hit.r);
-        drag = { kind: 'rows' };
+        if (e.ctrlKey || e.metaKey) {
+          if (grid.toggleRow(hit.r)) drag = { kind: 'rows' };
+        } else if (e.shiftKey) {
+          grid.extendRows(hit.r);
+          drag = { kind: 'rows' };
+        } else {
+          grid.selectRows(hit.r, hit.r);
+          drag = { kind: 'rows' };
+        }
         break;
       case 'cell':
         if (e.shiftKey) grid.extendTo(hit.r, hit.c, false);
@@ -455,7 +468,7 @@
     if (!drag) return;
     const p = cellUnderPointer(e);
     if (drag.kind === 'cells') grid.extendTo(p.r, p.c, false);
-    else if (drag.kind === 'rows') grid.extendTo(p.r, colCount - 1, false);
+    else if (drag.kind === 'rows') grid.extendRows(p.r);
     else if (drag.kind === 'cols') grid.extendCols(p.c);
   }
 
@@ -488,6 +501,7 @@
     if (!drag) return;
     if (viewport?.hasPointerCapture(e.pointerId)) viewport.releasePointerCapture(e.pointerId);
     if (drag.kind === 'cols') grid.settleCols();
+    else if (drag.kind === 'rows') grid.settleRows();
     drag = null;
     lastPointer = null;
     if (autoScrollRaf) cancelAnimationFrame(autoScrollRaf);
@@ -525,7 +539,7 @@
       if (!(fullCols && selCols.has(hit.c))) grid.selectCols(hit.c, hit.c);
       items = columnMenu();
     } else if (hit.kind === 'gutter') {
-      if (!(fullRows && hit.r >= range.r0 && hit.r <= range.r1)) grid.selectRows(hit.r, hit.r);
+      if (!(fullRows && rowSelected(hit.r))) grid.selectRows(hit.r, hit.r);
       items = rowMenu();
     } else if (hit.kind === 'corner') {
       grid.selectAll();
@@ -536,7 +550,8 @@
   }
 
   function rowWord(): string {
-    return range.r1 > range.r0 ? `${range.r1 - range.r0 + 1} rows` : 'row';
+    const n = grid.selectedRowCount;
+    return n > 1 ? `${n} rows` : 'row';
   }
   function colWord(): string {
     return selCols.size > 1 ? `${selCols.size} columns` : 'column';
@@ -560,6 +575,7 @@
   }
 
   function rowMenu(): MenuItem[] {
+    const split = grid.splitRows;
     return [
       { label: 'Copy', shortcut: 'Ctrl+C', run: () => app.copy() },
       { label: 'Clear', shortcut: 'Delete', run: () => app.clearSelection() },
@@ -567,8 +583,8 @@
       { label: 'Insert row above', shortcut: 'Ctrl+Shift+Enter', run: () => app.insertRows('above') },
       { label: 'Insert row below', shortcut: 'Ctrl+Enter', run: () => app.insertRows('below') },
       { label: `Duplicate ${rowWord()}`, shortcut: 'Ctrl+Shift+D', run: () => app.duplicateRows() },
-      { label: 'Move up', shortcut: 'Alt+ArrowUp', disabled: range.r0 === 0 || grid.viewRows !== null, run: () => app.moveRows(-1) },
-      { label: 'Move down', shortcut: 'Alt+ArrowDown', disabled: range.r1 >= rowCount - 1 || grid.viewRows !== null, run: () => app.moveRows(1) },
+      { label: 'Move up', shortcut: 'Alt+ArrowUp', disabled: split || range.r0 === 0 || grid.viewRows !== null, run: () => app.moveRows(-1) },
+      { label: 'Move down', shortcut: 'Alt+ArrowDown', disabled: split || range.r1 >= rowCount - 1 || grid.viewRows !== null, run: () => app.moveRows(1) },
       'sep',
       { label: `Delete ${rowWord()}`, shortcut: 'Ctrl+Shift+K', danger: true, run: () => app.deleteRows() },
     ];
@@ -576,7 +592,7 @@
 
   function columnMenu(): MenuItem[] {
     const c = colRuns[0]?.c0 ?? range.c0;
-    const split = grid.isSplit;
+    const split = grid.splitCols;
     return [
       { label: 'Sort ascending', run: () => app.sort('asc') },
       { label: 'Sort descending', run: () => app.sort('desc') },
@@ -909,7 +925,7 @@
     </div>
 
     {#each visibleRows as row (row.vr)}
-      {@const rowSel = row.vr >= range.r0 && row.vr <= range.r1}
+      {@const rowSel = rowSelected(row.vr)}
       <div
         class="row"
         class:hover={hoverRow === row.vr}
@@ -946,7 +962,7 @@
     </button>
 
     {#if !grid.isSingle}
-      {#each selRects as rect (rect.c0)}
+      {#each selRects as rect (rect.key)}
         <div
           class="sel-rect"
           style:left="{rect.left}px"

@@ -69,6 +69,7 @@ export class Doc {
   private listeners = new Set<(kind: 'cell' | 'structure' | 'load') => void>();
 
   private columnListeners = new Set<(change: ColumnChange) => void>();
+  private rowListeners = new Set<() => void>();
 
   onColumnChange(fn: (change: ColumnChange) => void): () => void {
     this.columnListeners.add(fn);
@@ -77,6 +78,16 @@ export class Doc {
 
   private emitColumns(change: ColumnChange): void {
     for (const fn of this.columnListeners) fn(change);
+  }
+
+  /** Calls `fn` when rows are added, removed or reordered. */
+  onRowChange(fn: () => void): () => void {
+    this.rowListeners.add(fn);
+    return () => this.rowListeners.delete(fn);
+  }
+
+  private emitRows(): void {
+    for (const fn of this.rowListeners) fn();
   }
 
   onChange(fn: (kind: 'cell' | 'structure' | 'load') => void): () => void {
@@ -279,20 +290,21 @@ export class Doc {
   }
 
   /**
-   * Writes a block of values from row r0, growing the sheet if needed. Its columns start at column
-   * `at`, or go into the existing columns `at` lists. `names` renames the columns the block lands
-   * in, skipping undefined entries. One undo step.
+   * Writes a block of values, growing the sheet if needed. Its rows start at row `r0`, or go into the
+   * existing rows `r0` lists, and its columns likewise start at column `at` or go into those `at`
+   * lists. `names` renames the columns the block lands in, skipping undefined entries. One undo step.
    */
-  applyBlock(r0: number, at: number | number[], block: string[][], label = 'Paste', names?: (string | undefined)[]): { rows: number; cols: number } {
+  applyBlock(r0: number | number[], at: number | number[], block: string[][], label = 'Paste', names?: (string | undefined)[]): { rows: number; cols: number } {
+    const row = (i: number): number => (typeof r0 === 'number' ? r0 + i : r0[i]);
     const col = (j: number): number => (typeof at === 'number' ? at + j : at[j]);
     const blockRows = block.length;
     const blockCols = blockWidth(block);
-    const addRows = Math.max(0, r0 + blockRows - this.rows.length);
+    const addRows = typeof r0 === 'number' ? Math.max(0, r0 + blockRows - this.rows.length) : 0;
     const addCols = typeof at === 'number' ? Math.max(0, at + blockCols - this.columns.length) : 0;
     const prev: CellEdit[] = [];
     for (let r = 0; r < blockRows; r++) {
       for (let c = 0; c < blockCols; c++) {
-        prev.push({ r: r0 + r, c: col(c), value: this.cell(r0 + r, col(c)) });
+        prev.push({ r: row(r), c: col(c), value: this.cell(row(r), col(c)) });
       }
     }
     const prevCols = this.columns.length;
@@ -303,8 +315,9 @@ export class Doc {
         redo: () => {
           for (let k = 0; k < addCols; k++) this.growColumn();
           for (let k = 0; k < addRows; k++) this.rows.push(new Array<string>(this.columns.length).fill(''));
+          if (addRows > 0) this.emitRows();
           for (let r = 0; r < blockRows; r++) {
-            for (let c = 0; c < blockCols; c++) this.rows[r0 + r][col(c)] = block[r][c] ?? '';
+            for (let c = 0; c < blockCols; c++) this.rows[row(r)][col(c)] = block[r][c] ?? '';
           }
           names?.forEach((name, j) => {
             if (name !== undefined && col(j) < this.columns.length) this.columns[col(j)] = name;
@@ -315,7 +328,10 @@ export class Doc {
           prevNames.forEach((name, j) => {
             if (col(j) < prevCols) this.columns[col(j)] = name;
           });
-          if (addRows > 0) this.rows.length -= addRows;
+          if (addRows > 0) {
+            this.rows.length -= addRows;
+            this.emitRows();
+          }
           if (addCols > 0) {
             this.columns.length = prevCols;
             for (const row of this.rows) row.length = prevCols;
@@ -336,6 +352,7 @@ export class Doc {
       this.rows = s.rows;
       this.hasHeader = s.hasHeader;
       this.emitColumns({ kind: 'reset' });
+      this.emitRows();
     };
     this.exec({ label, redo: () => apply(after), undo: () => apply(before) }, 'structure');
   }
@@ -350,9 +367,11 @@ export class Doc {
         redo: () => {
           const fresh = Array.from({ length: count }, (_, i) => (data ? [...data[i]] : new Array<string>(width).fill('')));
           this.rows = insertedAt(this.rows, at, fresh);
+          this.emitRows();
         },
         undo: () => {
           this.rows.splice(at, count);
+          this.emitRows();
         },
       },
       'structure',
@@ -370,6 +389,7 @@ export class Doc {
           removed = sorted.map((i) => this.rows[i]);
           const drop = new Set(sorted);
           this.rows = this.rows.filter((_, i) => !drop.has(i));
+          this.emitRows();
         },
         undo: () => {
           const kept = this.rows;
@@ -378,6 +398,7 @@ export class Doc {
             merged[i] = sorted[k] === i ? removed[k++] : kept[j++];
           }
           this.rows = merged;
+          this.emitRows();
         },
       },
       'structure',
@@ -438,6 +459,7 @@ export class Doc {
     const carry = (block: number, dir: 1 | -1): void => {
       if (dir < 0) this.rows.splice(block + count - 1, 0, this.rows.splice(block - 1, 1)[0]);
       else this.rows.splice(block, 0, this.rows.splice(block + count, 1)[0]);
+      this.emitRows();
     };
     this.exec(
       {
@@ -533,10 +555,12 @@ export class Doc {
         redo: () => {
           const old = this.rows;
           this.rows = perm.map((i) => old[i]);
+          this.emitRows();
         },
         undo: () => {
           const sorted = this.rows;
           this.rows = inverse.map((i) => sorted[i]);
+          this.emitRows();
         },
       },
       'structure',
@@ -598,6 +622,7 @@ export class Doc {
             this.columns = letters.slice();
             this.hasHeader = false;
           }
+          this.emitRows();
         },
         undo: () => {
           if (value) {
@@ -608,6 +633,7 @@ export class Doc {
             this.columns = this.rows.shift()!;
             this.hasHeader = true;
           }
+          this.emitRows();
         },
       },
       'structure',
