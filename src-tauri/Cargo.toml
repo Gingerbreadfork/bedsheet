@@ -1,6 +1,6 @@
 [package]
 name = "bedsheet"
-version = "0.3.0"
+version = "0.3.1"
 description = "A focused CSV editor"
 authors = ["gingerbreadfork"]
 license = "MIT"
