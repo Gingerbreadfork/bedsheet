@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import './styles/app.css';
   import { app } from './lib/app.svelte';
-  import { isTauri, win, onFileDrop } from './lib/platform';
+  import { isTauri, isWindows, win, onFileDrop } from './lib/platform';
   import HeaderBar from './components/HeaderBar.svelte';
   import FindBar from './components/FindBar.svelte';
   import Grid from './components/Grid.svelte';
@@ -110,6 +110,7 @@
 <div
   class="app"
   class:tauri={isTauri}
+  class:windows={isWindows}
   class:maximized={app.maximized}
   role="application"
   ondragover={onDragOver}
@@ -168,7 +169,8 @@
     border-radius: var(--radius-window);
     box-shadow: inset 0 0 0 1px var(--frame);
   }
-  .app.tauri.maximized {
+  .app.tauri.maximized,
+  .app.tauri.windows {
     border-radius: 0;
     box-shadow: none;
   }

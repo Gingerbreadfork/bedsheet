@@ -27,6 +27,7 @@ import {
   type OpenedFile,
   type RecentEntry,
 } from './platform';
+import { baseName } from './paths';
 
 export type Theme = 'system' | 'light' | 'dark';
 export type Group = 'File' | 'Edit' | 'Rows' | 'Columns' | 'Find' | 'View' | 'Help';
@@ -403,7 +404,7 @@ export class AppState {
     const size = (await fileStamp(path))?.size ?? 0;
     if (size > LARGE_FILE_BYTES) {
       const open = await this.choose(
-        `${path.split('/').pop()} is ${formatSize(size)}`,
+        `${baseName(path)} is ${formatSize(size)}`,
         'Opening a file this large can take a while and use several times its size in memory.',
         [
           { label: 'Cancel', kind: 'primary', value: false },
@@ -417,7 +418,7 @@ export class AppState {
       await this.loadFile(file);
     } catch (e) {
       if (/os error 2\b/.test(String(e))) this.recent = removeRecent(path);
-      this.toast(`Couldn’t open ${path.split('/').pop()}: ${String(e)}`, 'error', 4000);
+      this.toast(`Couldn’t open ${baseName(path)}: ${String(e)}`, 'error', 4000);
     }
   }
 

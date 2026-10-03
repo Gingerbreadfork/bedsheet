@@ -1,12 +1,8 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
   import { removeRecent } from '../lib/platform';
+  import { shortDir } from '../lib/paths';
   import Icon from './Icon.svelte';
-
-  function shortPath(p: string): string {
-    const dir = p.slice(0, p.lastIndexOf('/'));
-    return dir.replace(/^\/home\/[^/]+/, '~') || '/';
-  }
 
   function ago(ts: number): string {
     const s = Math.max(0, (Date.now() - ts) / 1000);
@@ -46,7 +42,7 @@
               <button class="open" onclick={() => app.openPath(r.path)} title={r.path}>
                 <span class="ico"><Icon name="file" size={15} /></span>
                 <span class="rname">{r.name}</span>
-                <span class="rpath" dir="rtl">&lrm;{shortPath(r.path)}&lrm;</span>
+                <span class="rpath" dir="rtl">&lrm;{shortDir(r.path)}&lrm;</span>
                 <span class="rtime">{ago(r.openedAt)}</span>
               </button>
               <button class="forget" title="Remove from recent" onclick={() => (app.recent = removeRecent(r.path))}>

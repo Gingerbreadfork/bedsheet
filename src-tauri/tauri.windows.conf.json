@@ -1,0 +1,25 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Bedsheet",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 640,
+        "minHeight": 420,
+        "center": true,
+        "resizable": true,
+        "decorations": false,
+        "transparent": false,
+        "dragDropEnabled": true
+      }
+    ]
+  },
+  "bundle": {
+    "targets": [
+      "nsis",
+      "msi"
+    ]
+  }
+}

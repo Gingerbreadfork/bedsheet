@@ -4,8 +4,11 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 export type ResizeDirection = 'East' | 'North' | 'NorthEast' | 'NorthWest' | 'South' | 'SouthEast' | 'SouthWest' | 'West';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { readText as clipRead, writeText as clipWrite, writeHtml as clipWriteHtml } from '@tauri-apps/plugin-clipboard-manager';
+import { baseName } from './paths';
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+/** On Windows the system draws the window's corners and shadow, so the page doesn't. */
+export const isWindows = typeof navigator !== 'undefined' && /\bWindows\b/.test(navigator.userAgent);
 
 /** Size and modification time, used to notice when a file changes behind the app's back. */
 export interface FileStamp {
@@ -45,10 +48,6 @@ const FILTERS = [
   { name: 'Delimited text', extensions: ['csv', 'tsv', 'txt', 'tab', 'psv', 'dat'] },
   { name: 'All files', extensions: ['*'] },
 ];
-
-function baseName(path: string): string {
-  return path.split('/').pop() ?? path;
-}
 
 export async function readPath(path: string): Promise<OpenedFile> {
   const stamp = await fileStamp(path);
