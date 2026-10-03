@@ -5,7 +5,7 @@
 <h1 align="center">Bedsheet</h1>
 
 <p align="center">
-  A CSV editor for Linux that is fast, focused, and genuinely nice to look at.<br>
+  A CSV editor for Linux and Windows that is fast, focused, and genuinely nice to look at.<br>
   Named for the ghost costume, and for what other spreadsheet apps do to you.
 </p>
 
@@ -75,7 +75,7 @@ Recent files, drag and drop to open, paste a table to start a sheet from it, and
 
 ## Install
 
-Grab the package for your distribution from the
+Grab the package for your system from the
 [Releases](../../releases) page.
 
 ```sh
@@ -89,6 +89,12 @@ sudo apt install ./Bedsheet_*_amd64.deb
 chmod +x Bedsheet_*.AppImage && ./Bedsheet_*.AppImage
 ```
 
+On Windows, run `Bedsheet_*_x64-setup.exe`. It installs for the current user and needs no
+administrator rights; the `.msi` installs for every user and does. Neither is code-signed, so
+SmartScreen warns the first time: choose "More info", then "Run anyway". Bedsheet renders with
+the WebView2 runtime that ships with Windows 10 and 11, and the installer fetches it if a
+machine doesn't have it.
+
 The packages register Bedsheet as a handler for `.csv` and `.tsv` files, so it shows up in
 "Open with" in your file manager.
 
@@ -99,6 +105,9 @@ bedsheet                    # start with the empty sheet
 bedsheet export.csv         # open a file
 bedsheet a.csv b.csv        # open several, each in its own window
 ```
+
+On Windows the installer doesn't put Bedsheet on your `PATH`, so open files from Explorer or
+drag them onto the window instead.
 
 ### Keyboard
 
@@ -227,9 +236,9 @@ Type is IBM Plex Sans for the interface and for cell text, with tabular figures 
 line up, and IBM Plex Mono for row numbers and the optional monospace cell mode. Both are
 bundled, so the app looks the same on every machine.
 
-The window draws its own title bar and corners, so there's no stock toolbar or chrome
-between you and the sheet. Both themes are designed, not derived; the dark one is a deep
-green-charcoal rather than gray.
+The window draws its own title bar, and on Linux its own corners, so there's no stock toolbar
+or chrome between you and the sheet. On Windows the corners and shadow come from the system.
+Both themes are designed, not derived; the dark one is a deep green-charcoal rather than gray.
 
 ## Under the hood
 
@@ -246,7 +255,8 @@ green-charcoal rather than gray.
   million rows) keep their own scroll offset, so the last row is as reachable as the first.
 - Undo is a command stack. Every operation records how to reverse itself, including sorts,
   which store their permutation.
-- The release binary is about 4.6 MB. It uses the system WebKitGTK.
+- The release binary is about 4.6 MB on Linux, where it uses the system WebKitGTK. On Windows
+  it uses WebView2.
 
 ## Not planned
 
@@ -259,7 +269,9 @@ mode, and reading `.xlsx` files (as import only).
 
 ## Building from source
 
-You need Rust (stable), Node 20 or newer, pnpm, and the WebKitGTK development libraries.
+You need Rust (stable), Node 20 or newer, and pnpm. On Linux you also need the WebKitGTK
+development libraries. On Windows you need the Visual Studio C++ Build Tools (the "Desktop
+development with C++" workload) and the WebView2 runtime, which Windows 10 and 11 already have.
 
 ```sh
 # Fedora
@@ -275,7 +287,7 @@ sudo pacman -S webkit2gtk-4.1 base-devel librsvg
 ```sh
 pnpm install
 pnpm tauri dev              # run with hot reload
-pnpm tauri build            # .deb, .rpm, and AppImage in src-tauri/target/release/bundle
+pnpm tauri build            # packages for this platform in src-tauri/target/release/bundle
 pnpm test                   # unit tests
 pnpm check                  # type check
 cargo test --manifest-path src-tauri/Cargo.toml   # file saving tests
@@ -288,8 +300,9 @@ On distributions with recent binutils, linuxdeploy's bundled `strip` can't read 
 libraries it copies into the AppImage. If the AppImage step fails, build with
 `NO_STRIP=true pnpm tauri build`. The .deb and .rpm are unaffected.
 
-Bedsheet is built and tested on Fedora with GNOME on Wayland. It should run on any Linux
-desktop with WebKitGTK 4.1.
+Bedsheet is developed and tested on Fedora with GNOME on Wayland, and should run on any Linux
+desktop with WebKitGTK 4.1. The Windows build is newer and has seen much less use; if
+something is off there, please open an issue.
 
 ## License
 
