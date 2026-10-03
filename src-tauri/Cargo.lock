@@ -126,6 +126,7 @@ name = "bedsheet"
 version = "0.3.1"
 dependencies = [
  "arboard",
+ "dunce",
  "percent-encoding",
  "serde",
  "serde_json",
@@ -134,6 +135,7 @@ dependencies = [
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-dialog",
  "tauri-plugin-window-state",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

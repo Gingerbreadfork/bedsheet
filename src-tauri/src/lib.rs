@@ -70,13 +70,27 @@ fn write_temp(tmp: &Path, bytes: &[u8], existing: Option<&fs::Metadata>) -> io::
 }
 
 #[cfg(unix)]
-fn has_other_links(meta: &fs::Metadata) -> bool {
+fn has_other_links(_target: &Path, meta: &fs::Metadata) -> bool {
     use std::os::unix::fs::MetadataExt;
     meta.nlink() > 1
 }
 
-#[cfg(not(unix))]
-fn has_other_links(_: &fs::Metadata) -> bool {
+#[cfg(windows)]
+fn has_other_links(target: &Path, _meta: &fs::Metadata) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+    };
+    let Ok(file) = File::open(target) else {
+        return false;
+    };
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    let ok = unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) };
+    ok != 0 && info.nNumberOfLinks > 1
+}
+
+#[cfg(not(any(unix, windows)))]
+fn has_other_links(_target: &Path, _meta: &fs::Metadata) -> bool {
     false
 }
 
@@ -89,7 +103,10 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
         .filter(|d| !d.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     let existing = fs::metadata(&target).ok();
-    if existing.as_ref().is_some_and(has_other_links) {
+    if existing
+        .as_ref()
+        .is_some_and(|meta| has_other_links(&target, meta))
+    {
         return write_in_place(&target, bytes);
     }
     let stamp = std::time::SystemTime::now()
@@ -154,8 +171,35 @@ fn recovery_file(dir: &Path, pid: u32, id: &str) -> Result<PathBuf, String> {
     Ok(dir.join(format!("{pid}-{id}.json")))
 }
 
+#[cfg(target_os = "linux")]
 fn process_is_running(pid: u32) -> bool {
-    !cfg!(target_os = "linux") || Path::new(&format!("/proc/{pid}")).exists()
+    Path::new(&format!("/proc/{pid}")).exists()
+}
+
+/// A process that exists but can't be opened, such as another user's, counts as running.
+#[cfg(windows)]
+fn process_is_running(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, ERROR_INVALID_PARAMETER, STILL_ACTIVE,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() {
+            return GetLastError() != ERROR_INVALID_PARAMETER;
+        }
+        let mut code = 0u32;
+        let known = GetExitCodeProcess(process, &mut code) != 0;
+        CloseHandle(process);
+        !known || code == STILL_ACTIVE as u32
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+fn process_is_running(_pid: u32) -> bool {
+    true
 }
 
 /// Takes over the snapshots left by instances that are no longer running and returns them.
@@ -239,7 +283,7 @@ fn launch_paths() -> Vec<PathBuf> {
         .skip(1)
         .map(PathBuf::from)
         .filter(|p| p.is_file())
-        .map(|p| fs::canonicalize(&p).unwrap_or(p))
+        .map(|p| dunce::canonicalize(&p).unwrap_or(p))
         .collect()
 }
 
@@ -285,10 +329,12 @@ pub fn run() {
         .expect("error while running bedsheet");
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    /// A process that is always running: init on Linux, System on Windows.
+    const LIVE_PID: u32 = if cfg!(windows) { 4 } else { 1 };
 
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("bedsheet-test-{}-{name}", std::process::id()));
@@ -321,7 +367,7 @@ mod tests {
         )
         .unwrap();
         fs::write(recovery_file(&dir, own, "mine").unwrap(), "{}").unwrap();
-        fs::write(recovery_file(&dir, 1, "init").unwrap(), "{}").unwrap();
+        fs::write(recovery_file(&dir, LIVE_PID, "init").unwrap(), "{}").unwrap();
         fs::write(dir.join("notes.txt"), "unrelated").unwrap();
 
         let found = claim_recovery_files(&dir, own);
@@ -351,32 +397,13 @@ mod tests {
     }
 
     #[test]
-    fn keeps_the_mode_of_an_existing_file() {
-        let dir = scratch("mode");
-        let path = dir.join("private.csv");
+    fn replaces_an_existing_file() {
+        let dir = scratch("replace");
+        let path = dir.join("a.csv");
         fs::write(&path, "old").unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
         write_atomic(&path, b"new").unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"new");
-        assert_eq!(
-            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
-            0o600
-        );
-    }
-
-    #[test]
-    fn writes_through_a_symlink() {
-        let dir = scratch("link");
-        let real = dir.join("real.csv");
-        let link = dir.join("link.csv");
-        fs::write(&real, "old").unwrap();
-        symlink(&real, &link).unwrap();
-        write_atomic(&link, b"new").unwrap();
-        assert!(fs::symlink_metadata(&link)
-            .unwrap()
-            .file_type()
-            .is_symlink());
-        assert_eq!(fs::read(&real).unwrap(), b"new");
+        assert_eq!(leftovers(&dir), 0);
     }
 
     #[test]
@@ -391,14 +418,56 @@ mod tests {
     }
 
     #[test]
-    fn overwrites_in_place_when_the_directory_is_read_only() {
-        let dir = scratch("readonly");
-        let path = dir.join("a.csv");
-        fs::write(&path, "old").unwrap();
-        fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
-        let result = write_atomic(&path, b"new");
-        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
-        result.unwrap();
-        assert_eq!(fs::read(&path).unwrap(), b"new");
+    fn knows_which_processes_are_running() {
+        assert!(process_is_running(std::process::id()));
+        assert!(process_is_running(LIVE_PID));
+        assert!(!process_is_running(4_000_000));
+    }
+
+    #[cfg(unix)]
+    mod unix {
+        use super::*;
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        #[test]
+        fn keeps_the_mode_of_an_existing_file() {
+            let dir = scratch("mode");
+            let path = dir.join("private.csv");
+            fs::write(&path, "old").unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+            write_atomic(&path, b"new").unwrap();
+            assert_eq!(fs::read(&path).unwrap(), b"new");
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+
+        #[test]
+        fn writes_through_a_symlink() {
+            let dir = scratch("link");
+            let real = dir.join("real.csv");
+            let link = dir.join("link.csv");
+            fs::write(&real, "old").unwrap();
+            symlink(&real, &link).unwrap();
+            write_atomic(&link, b"new").unwrap();
+            assert!(fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink());
+            assert_eq!(fs::read(&real).unwrap(), b"new");
+        }
+
+        #[test]
+        fn overwrites_in_place_when_the_directory_is_read_only() {
+            let dir = scratch("readonly");
+            let path = dir.join("a.csv");
+            fs::write(&path, "old").unwrap();
+            fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+            let result = write_atomic(&path, b"new");
+            fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+            result.unwrap();
+            assert_eq!(fs::read(&path).unwrap(), b"new");
+        }
     }
 }
