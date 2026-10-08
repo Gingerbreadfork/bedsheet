@@ -89,6 +89,7 @@
     role="presentation"
     onpointerdown={(e) => {
       if (e.button === 2) return;
+      e.preventDefault();
       app.closeMenu();
     }}
     oncontextmenu={passThroughRightClick}

@@ -29,7 +29,8 @@
     })).filter((g) => g.items.length > 0),
   );
 
-  function close(): void {
+  function close(e?: Event): void {
+    e?.preventDefault();
     app.shortcutsOpen = false;
     app.grid.focusGrid?.();
   }

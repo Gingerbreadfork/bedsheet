@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { app, type MenuItem } from '../lib/app.svelte';
   import { cellKey, MIN_COL_WIDTH, MAX_COL_WIDTH, DEFAULT_COL_WIDTH, type Pos } from '../lib/grid.svelte';
   import { inferAllColumnTypes } from '../lib/infer';
@@ -295,6 +295,7 @@
     proxy?.focus({ preventScroll: true });
   }
   grid.focusGrid = focusGrid;
+  onMount(focusGrid);
 
   $effect(() =>
     doc.onChange((kind) => {

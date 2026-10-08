@@ -36,7 +36,7 @@
 <svelte:window onkeydown={onKey} />
 
 {#if dialog}
-  <div class="scrim" role="presentation">
+  <div class="scrim" role="presentation" onpointerdown={(e) => e.preventDefault()}>
     <div class="panel" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title" bind:this={panel}>
       <h2 id="dlg-title">{dialog.title}</h2>
       <p>{dialog.message}</p>

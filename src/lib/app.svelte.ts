@@ -347,6 +347,12 @@ export class AppState {
     return closed;
   }
 
+  /** Closes the dialog and hands the keyboard back to the grid. */
+  private closeDialog(): void {
+    this.dialog = null;
+    this.grid.focusGrid?.();
+  }
+
   /** Shows a dialog and resolves with the value of the button that was chosen. */
   private choose<T>(title: string, message: string, options: { label: string; kind?: DialogAction['kind']; value: T }[]): Promise<T> {
     return new Promise((resolve) => {
@@ -357,7 +363,7 @@ export class AppState {
           label: o.label,
           kind: o.kind,
           run: () => {
-            this.dialog = null;
+            this.closeDialog();
             resolve(o.value);
           },
         })),
@@ -369,7 +375,7 @@ export class AppState {
     if (!this.doc.dirty) return Promise.resolve(true);
     return new Promise((resolve) => {
       const close = (v: boolean) => {
-        this.dialog = null;
+        this.closeDialog();
         resolve(v);
       };
       this.dialog = {

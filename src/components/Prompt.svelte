@@ -11,7 +11,8 @@
     input?.select();
   });
 
-  function close(): void {
+  function close(e?: Event): void {
+    e?.preventDefault();
     app.prompt = null;
     app.grid.focusGrid?.();
   }

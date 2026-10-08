@@ -111,6 +111,22 @@ describe('opening something else', () => {
   });
 });
 
+describe('dialogs', () => {
+  it('hand the keyboard back to the grid when they close', async () => {
+    load('h\na\n');
+    app.doc.setCell(0, 0, 'b');
+    const focus = vi.fn();
+    app.grid.focusGrid = focus;
+    const answer = app.confirmDiscard();
+    expect(app.dialog).not.toBeNull();
+    app.dialog!.actions.find((a) => a.label === 'Cancel')!.run();
+    expect(await answer).toBe(false);
+    expect(app.dialog).toBeNull();
+    expect(focus).toHaveBeenCalled();
+    app.grid.focusGrid = null;
+  });
+});
+
 describe('column widths', () => {
   it('stay with their columns through insert, delete, undo and redo', () => {
     load('a,b,c,d\n1,2,3,4\n');

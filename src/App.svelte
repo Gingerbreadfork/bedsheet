@@ -60,6 +60,11 @@
     return () => cleanups.forEach((fn) => fn());
   });
 
+  /** Keeps keyboard focus on the grid when a button elsewhere in the window is clicked. */
+  function keepFocus(e: MouseEvent): void {
+    if ((e.target as Element).closest('button')) e.preventDefault();
+  }
+
   function suppressNativeMenu(e: MouseEvent): void {
     const t = e.target as HTMLElement;
     if (t.closest('input, textarea')) return;
@@ -105,7 +110,7 @@
   ] as const;
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onmousedown={keepFocus} />
 
 <div
   class="app"

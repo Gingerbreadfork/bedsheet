@@ -115,7 +115,8 @@
 <div
   class="scrim"
   role="presentation"
-  onpointerdown={() => {
+  onpointerdown={(e) => {
+    e.preventDefault();
     app.paletteOpen = false;
     app.grid.focusGrid?.();
   }}
