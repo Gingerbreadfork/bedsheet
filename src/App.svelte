@@ -42,10 +42,6 @@
       void win.onResized(() => void win.isMaximized().then((m) => (app.maximized = m))).then((u) => cleanups.push(u));
       void win
         .onCloseRequested((prevent) => {
-          if (!doc.dirty) {
-            void app.clearRecovery();
-            return;
-          }
           prevent();
           void app.quit();
         })
