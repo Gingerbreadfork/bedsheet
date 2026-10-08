@@ -1169,7 +1169,7 @@
     left: 0;
     height: var(--row-h);
   }
-  .row.hover .cell {
+  .row.hover .cell:not(.match) {
     background-color: var(--sheet-hover);
   }
   .gutter {
@@ -1228,9 +1228,11 @@
     background-color: var(--mark-strong);
     color: var(--mark-ink);
   }
-  :global(:root[data-theme='dark']) .cell.match,
-  :global(:root[data-theme='dark']) .cell.cur {
+  :global(:root[data-theme='dark']) .cell.match {
     color: var(--ink);
+  }
+  :global(:root[data-theme='dark']) .cell.cur {
+    color: var(--mark-ink);
   }
   @media (prefers-color-scheme: dark) {
     :global(:root:not([data-theme='light'])) .cell.match {
