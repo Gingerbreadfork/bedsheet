@@ -777,7 +777,7 @@
     if (grid.editing || grid.editingHeader !== null || rowCount === 0) return;
     e.preventDefault();
     putOnClipboard(e);
-    app.clearSelection();
+    app.clearSelection('Cut');
     app.toastCells('Cut', true);
   }
 

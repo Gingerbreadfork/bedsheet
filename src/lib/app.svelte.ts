@@ -851,9 +851,9 @@ export class AppState {
     this.autoFit?.(cols, { r0: g.dataRow(vr0), r1: g.dataRow(Math.min(vr1, g.rowCount - 1)) });
   }
 
-  clearSelection(): void {
+  clearSelection(label = 'Clear cells'): void {
     if (!this.doc.loaded) return;
-    this.doc.setCells(this.selectionEdits(() => ''), 'Clear cells');
+    this.doc.setCells(this.selectionEdits(() => ''), label);
   }
 
   fillDown(): void {

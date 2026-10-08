@@ -159,6 +159,13 @@ describe('undo and redo', () => {
     expect(app.commands.find((c) => c.id === 'edit.undo')?.when?.()).toBe(true);
   });
 
+  it('name a cut made through the clipboard event as one', () => {
+    load('h\na\n');
+    app.clearSelection('Cut');
+    expect(column()).toEqual(['']);
+    expect(app.undoTitle('undo')).toBe('Undo cut');
+  });
+
   it('say when there is nothing to undo', () => {
     load('h\na\n');
     app.undo();
