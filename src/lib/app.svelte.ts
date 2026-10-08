@@ -75,6 +75,8 @@ export interface DialogState {
   title: string;
   message: string;
   actions: DialogAction[];
+  /** What Escape does. Without it, Escape takes the Cancel action, or the one before the last. */
+  dismiss?: () => void;
 }
 
 /** A one-line input box. `submit` returns false to reject the value and keep the box open. */
@@ -285,10 +287,19 @@ export class AppState {
     for (const { id, snapshot } of pending) {
       if (this.doc.dirty) return;
       const when = new Date(snapshot.savedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-      const recover = await this.choose(`Recover unsaved changes to ${snapshot.name}?`, `Bedsheet closed on ${when} before these edits were saved.`, [
-        { label: 'Discard', value: false },
-        { label: 'Recover', kind: 'primary', value: true },
-      ]);
+      const recover = await this.choose<boolean | null>(
+        `Recover unsaved changes to ${snapshot.name}?`,
+        `Bedsheet closed on ${when} before these edits were saved.`,
+        [
+          { label: 'Discard', value: false },
+          { label: 'Recover', kind: 'primary', value: true },
+        ],
+        { value: null },
+      );
+      if (recover === null) {
+        this.toast(`Kept the unsaved changes to ${snapshot.name} to ask about next time`, 'info', 4000);
+        continue;
+      }
       if (!recover) {
         await recovery.clear(id).catch(() => {});
         continue;
@@ -353,20 +364,23 @@ export class AppState {
     this.grid.focusGrid?.();
   }
 
-  /** Shows a dialog and resolves with the value of the button that was chosen. */
-  private choose<T>(title: string, message: string, options: { label: string; kind?: DialogAction['kind']; value: T }[]): Promise<T> {
+  /** Shows a dialog and resolves with the value of the button that was chosen, or with `dismissed` when Escape closes it. */
+  private choose<T>(
+    title: string,
+    message: string,
+    options: { label: string; kind?: DialogAction['kind']; value: T }[],
+    dismissed?: { value: T },
+  ): Promise<T> {
     return new Promise((resolve) => {
+      const pick = (value: T): void => {
+        this.closeDialog();
+        resolve(value);
+      };
       this.dialog = {
         title,
         message,
-        actions: options.map((o) => ({
-          label: o.label,
-          kind: o.kind,
-          run: () => {
-            this.closeDialog();
-            resolve(o.value);
-          },
-        })),
+        actions: options.map((o) => ({ label: o.label, kind: o.kind, run: () => pick(o.value) })),
+        dismiss: dismissed && (() => pick(dismissed.value)),
       };
     });
   }

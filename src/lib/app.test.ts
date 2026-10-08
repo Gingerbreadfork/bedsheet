@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { app } from './app.svelte';
-import { clipboard } from './platform';
+import { clipboard, recovery } from './platform';
 import { toHtmlTable } from './clipboard';
 
 vi.stubGlobal('requestAnimationFrame', (fn: () => void) => setTimeout(fn, 0));
@@ -124,6 +124,51 @@ describe('dialogs', () => {
     expect(app.dialog).toBeNull();
     expect(focus).toHaveBeenCalled();
     app.grid.focusGrid = null;
+  });
+});
+
+describe('crash recovery', () => {
+  const snapshot = { name: 'notes.csv', path: '/tmp/notes.csv', encoding: 'UTF-8', delimiter: ',', hasHeader: true, savedAt: 0, text: 'a\nkept\n' };
+
+  function offer(): { clear: ReturnType<typeof vi.fn> } {
+    app.doc.close();
+    vi.spyOn(recovery, 'pending').mockResolvedValue([{ id: 'abc123', snapshot }]);
+    const clear = vi.spyOn(recovery, 'clear').mockResolvedValue();
+    void app.init();
+    return { clear };
+  }
+
+  async function settle(): Promise<void> {
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it('keeps the snapshot for next time when the prompt is dismissed with Escape', async () => {
+    const { clear } = offer();
+    await settle();
+    expect(app.dialog?.title).toBe('Recover unsaved changes to notes.csv?');
+    app.dialog!.dismiss!();
+    await settle();
+    expect(app.dialog).toBeNull();
+    expect(clear).not.toHaveBeenCalled();
+    expect(app.doc.loaded).toBe(false);
+    expect(app.toasts.at(-1)?.text).toContain('Kept the unsaved changes');
+  });
+
+  it('throws the snapshot away on Discard and loads it on Recover', async () => {
+    const { clear } = offer();
+    await settle();
+    app.dialog!.actions.find((a) => a.label === 'Discard')!.run();
+    await settle();
+    expect(clear).toHaveBeenCalledWith('abc123');
+    expect(app.doc.loaded).toBe(false);
+    offer();
+    await settle();
+    app.dialog!.actions.find((a) => a.label === 'Recover')!.run();
+    await settle();
+    expect(app.doc.loaded).toBe(true);
+    expect(app.doc.name).toBe('notes.csv');
+    expect(app.doc.dirty).toBe(true);
+    expect(column()).toEqual(['kept']);
   });
 });
 

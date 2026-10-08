@@ -14,8 +14,8 @@
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      const cancel = dialog.actions.find((a) => a.label === 'Cancel') ?? dialog.actions[dialog.actions.length - 2];
-      cancel?.run();
+      if (dialog.dismiss) dialog.dismiss();
+      else (dialog.actions.find((a) => a.label === 'Cancel') ?? dialog.actions[dialog.actions.length - 2])?.run();
     } else if (e.key === 'Enter') {
       const focused = document.activeElement;
       if (focused instanceof HTMLButtonElement && panel?.contains(focused)) return;
