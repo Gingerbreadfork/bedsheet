@@ -17,13 +17,13 @@ function cellHtml(value: string): string {
 
 /**
  * An HTML table of `rows` for documents and other rich-text targets. It carries no styling of its
- * own, so the target's borders, colours and fonts apply; the header row is marked with `<thead>`.
+ * own, so the target's borders, colours and fonts apply. The header row sits in `<thead>` and is made
+ * of plain `<td>` cells like the rest.
  */
 export function toHtmlTable(rows: readonly (readonly string[])[], header: boolean): string {
-  const row = (cells: readonly string[], tag: 'th' | 'td'): string =>
-    `<tr>${cells.map((v) => `<${tag}>${cellHtml(v)}</${tag}>`).join('')}</tr>`;
-  const head = header && rows.length > 0 ? `<thead>${row(rows[0], 'th')}</thead>` : '';
-  const body = (header ? rows.slice(1) : rows).map((r) => row(r, 'td')).join('');
+  const row = (cells: readonly string[]): string => `<tr>${cells.map((v) => `<td>${cellHtml(v)}</td>`).join('')}</tr>`;
+  const head = header && rows.length > 0 ? `<thead>${row(rows[0])}</thead>` : '';
+  const body = (header ? rows.slice(1) : rows).map(row).join('');
   return `<meta charset="utf-8"><table>${head}<tbody>${body}</tbody></table>`;
 }
 

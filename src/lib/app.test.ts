@@ -325,7 +325,7 @@ describe('clipboard', () => {
     app.grid.inHeader = true;
     const { text, html } = app.selectionClip();
     expect(text).toBe('age\n30\n41\n');
-    expect(html).toContain('<thead><tr><th>age</th></tr></thead>');
+    expect(html).toContain('<thead><tr><td>age</td></tr></thead>');
     blank();
     app.pasteText(text);
     expect(app.doc.columns).toEqual(['age']);
@@ -363,7 +363,7 @@ describe('clipboard', () => {
     app.grid.selectCols(1, 2);
     const { text, html } = app.selectionClip();
     expect(text).toBe('age\tcity\n');
-    expect(html).toContain('<thead><tr><th>age</th><th>city</th></tr></thead><tbody></tbody>');
+    expect(html).toContain('<thead><tr><td>age</td><td>city</td></tr></thead><tbody></tbody>');
     await app.copy();
     expect(app.toasts.at(-1)?.text).toBe('Copied 2 column names');
     blank();
@@ -766,7 +766,7 @@ describe('columns picked by Ctrl-clicking their headers', () => {
     pick(0, 2, 3);
     const { text, html } = app.selectionClip();
     expect(text).toBe('a\tc\td\n1\t3\t4\n5\t7\t8\n');
-    expect(html).toContain('<thead><tr><th>a</th><th>c</th><th>d</th></tr></thead>');
+    expect(html).toContain('<thead><tr><td>a</td><td>c</td><td>d</td></tr></thead>');
     await app.copy();
     expect(app.toasts.at(-1)?.text).toBe('Copied 6 cells with headers');
   });

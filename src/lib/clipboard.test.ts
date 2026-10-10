@@ -25,23 +25,24 @@ describe('toHtmlTable', () => {
     const html = toHtmlTable([['<a> & "b"', 'one\ntwo']], false);
     expect(html).toContain('&lt;a&gt; &amp; &quot;b&quot;');
     expect(html).toContain('one<br style="mso-data-placement:same-cell">two');
-    expect(html).not.toContain('<th');
+    expect(html).not.toMatch(/<th[\s>]/);
   });
 
   it('marks the header row and reads back the same cells', () => {
     const rows = [['Name', 'Notes'], ['Alice', 'x < y\nand more'], ['', 'Bob & co']];
     const html = toHtmlTable(rows, true);
-    expect(html).toContain('<thead><tr><th>Name</th><th>Notes</th></tr></thead>');
+    expect(html).toContain('<thead><tr><td>Name</td><td>Notes</td></tr></thead>');
     expect(parseHtmlTable(html)).toEqual({ rows, header: true });
   });
 
-  it('carries no styling or borders of its own', () => {
+  it('carries no styling, borders or header cells of its own', () => {
     const html = toHtmlTable([['Name', 'Notes'], ['Alice', 'x']], true);
     expect(html).toBe(
-      '<meta charset="utf-8"><table><thead><tr><th>Name</th><th>Notes</th></tr></thead><tbody><tr><td>Alice</td><td>x</td></tr></tbody></table>',
+      '<meta charset="utf-8"><table><thead><tr><td>Name</td><td>Notes</td></tr></thead><tbody><tr><td>Alice</td><td>x</td></tr></tbody></table>',
     );
     expect(html).not.toMatch(/<(table|tr|th|td)\s/);
     expect(html).not.toMatch(/border|color|font|align/);
+    expect(html).not.toMatch(/<th[\s>]/);
   });
 });
 
