@@ -30,6 +30,13 @@ describe('dates', () => {
     expect(toTimestamp('31/31/2024', 'dmy')).toBeNaN();
     expect(toTimestamp('soon')).toBeNaN();
   });
+
+  it('reads ISO times without a zone as UTC, like dates without a time', () => {
+    expect(toTimestamp('2024-12-25 00:30')).toBe(Date.UTC(2024, 11, 25, 0, 30));
+    expect(toTimestamp('2024-12-25T00:30:00.5')).toBe(Date.UTC(2024, 11, 25, 0, 30, 0, 500));
+    expect(toTimestamp('2024-12-25T00:30+02:00')).toBe(Date.UTC(2024, 11, 24, 22, 30));
+    expect(toTimestamp('2024-12-25 00:30')).toBeGreaterThan(toTimestamp('2024-12-25'));
+  });
 });
 
 describe('inferColumnType', () => {

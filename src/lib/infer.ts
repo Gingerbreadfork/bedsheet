@@ -3,6 +3,7 @@ export type ColType = 'number' | 'date' | 'bool' | 'text' | 'empty';
 const NUMBER = /^[-+]?[$€£¥]?\s?(?:\d{1,3}(?:,\d{3})+|\d+)?(?:\.\d+)?(?:[eE][-+]?\d+)?\s?%?$/;
 const HAS_DIGIT = /\d/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+const ZONELESS_TIME = /T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
 const SLASH_DATE = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})$/;
 const BOOL = /^(?:true|false|yes|no)$/i;
 
@@ -32,10 +33,13 @@ export function detectDateOrder(values: Iterable<string>): DateOrder {
   return 'mdy';
 }
 
-/** Milliseconds since the epoch, or NaN when the value is not a date. */
+/** Milliseconds since the epoch, or NaN when the value is not a date. ISO times without a zone are read as UTC, like dates without a time. */
 export function toTimestamp(s: string, order: DateOrder = 'mdy'): number {
   const t = s.trim();
-  if (ISO_DATE.test(t)) return Date.parse(t.replace(' ', 'T'));
+  if (ISO_DATE.test(t)) {
+    const iso = t.replace(' ', 'T');
+    return Date.parse(ZONELESS_TIME.test(iso) ? `${iso}Z` : iso);
+  }
   const m = SLASH_DATE.exec(t);
   if (!m) return NaN;
   const month = Number(order === 'mdy' ? m[1] : m[2]);
