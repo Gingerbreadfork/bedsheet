@@ -54,8 +54,8 @@
       e.stopPropagation();
       if (en.length === 0) return;
       const pos = en.indexOf(index);
-      const next = e.key === 'ArrowDown' ? en[(pos + 1) % en.length] : en[(pos - 1 + en.length) % en.length];
-      index = next;
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      index = pos < 0 ? en[step > 0 ? 0 : en.length - 1] : en[(pos + step + en.length) % en.length];
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       e.stopPropagation();
