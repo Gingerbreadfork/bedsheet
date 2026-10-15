@@ -3,7 +3,7 @@ import { inferColumnType, toNumber, toTimestamp, detectDateOrder, looksLikeHeade
 
 export interface Command {
   label: string;
-  /** Whether it only changes cell contents or also moves rows and columns around. */
+  /** `cell` when rows and columns stay where they are, `structure` when they move, appear or disappear. */
   kind?: 'cell' | 'structure';
   redo(): void;
   undo(): void;
@@ -280,15 +280,6 @@ export class Doc {
     this.setCells(edits, 'Clear cells');
   }
 
-  fillDown(r0: number, c0: number, r1: number, c1: number): void {
-    const edits: CellEdit[] = [];
-    for (let c = c0; c <= c1; c++) {
-      const v = this.cell(r0, c);
-      for (let r = r0 + 1; r <= r1; r++) edits.push({ r, c, value: v });
-    }
-    this.setCells(edits, 'Fill down');
-  }
-
   /**
    * Writes a block of values, growing the sheet if needed. Its rows start at row `r0`, or go into the
    * existing rows `r0` lists, and its columns likewise start at column `at` or go into those `at`
@@ -510,7 +501,7 @@ export class Doc {
             this.hasHeader = false;
           },
         },
-        'structure',
+        'cell',
       );
       return;
     }
@@ -526,7 +517,7 @@ export class Doc {
           this.columns[c] = prev;
         },
       },
-      'structure',
+      'cell',
     );
   }
 

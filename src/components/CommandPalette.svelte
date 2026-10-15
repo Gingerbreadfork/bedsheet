@@ -1,10 +1,8 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { app, type CommandDef, type Group } from '../lib/app.svelte';
+  import { app, GROUPS, type CommandDef } from '../lib/app.svelte';
   import { shortcutKeys } from '../lib/keys';
   import Icon from './Icon.svelte';
-
-  const GROUP_ORDER: Group[] = ['File', 'Edit', 'Rows', 'Columns', 'Find', 'View', 'Help'];
 
   let query = $state('');
   let index = $state(0);
@@ -54,7 +52,7 @@
       if (m) out.push({ cmd, title, score: m.score, hits: m.hits.filter((h) => h < title.length) });
     }
     if (q) out.sort((a, b) => b.score - a.score);
-    else out.sort((a, b) => GROUP_ORDER.indexOf(a.cmd.group) - GROUP_ORDER.indexOf(b.cmd.group));
+    else out.sort((a, b) => GROUPS.indexOf(a.cmd.group) - GROUPS.indexOf(b.cmd.group));
     return out;
   });
 

@@ -1,9 +1,7 @@
 <script lang="ts">
-  import { app, type Group } from '../lib/app.svelte';
+  import { app, GROUPS } from '../lib/app.svelte';
   import { shortcutKeys } from '../lib/keys';
   import Icon from './Icon.svelte';
-
-  const ORDER: Group[] = ['File', 'Edit', 'Rows', 'Columns', 'Find', 'View', 'Help'];
 
   const NAV: { title: string; keys: string }[] = [
     { title: 'Move between cells', keys: 'ArrowUp' },
@@ -23,7 +21,7 @@
   ];
 
   let groups = $derived(
-    ORDER.map((g) => ({
+    GROUPS.map((g) => ({
       name: g,
       items: app.commands.filter((c) => c.group === g && c.shortcut).map((c) => ({ title: app.title(c), keys: c.shortcut! })),
     })).filter((g) => g.items.length > 0),

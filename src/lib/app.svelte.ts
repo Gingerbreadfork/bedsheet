@@ -31,6 +31,8 @@ import { baseName } from './paths';
 
 export type Theme = 'system' | 'light' | 'dark';
 export type Group = 'File' | 'Edit' | 'Rows' | 'Columns' | 'Find' | 'View' | 'Help';
+/** The command groups, in the order the palette and the shortcut sheet list them. */
+export const GROUPS: Group[] = ['File', 'Edit', 'Rows', 'Columns', 'Find', 'View', 'Help'];
 
 export interface CommandDef {
   id: string;
@@ -285,6 +287,7 @@ export class AppState {
       return;
     }
     for (const { id, snapshot } of pending) {
+      this.commitPending();
       if (this.doc.dirty) return;
       const when = new Date(snapshot.savedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
       const recover = await this.choose<boolean | null>(
@@ -304,6 +307,8 @@ export class AppState {
         await recovery.clear(id).catch(() => {});
         continue;
       }
+      this.commitPending();
+      if (this.doc.dirty && !(await this.confirmDiscard())) continue;
       this.resetFind();
       this.sourceBytes = null;
       this.recoveryId = id;
@@ -311,8 +316,7 @@ export class AppState {
       this.doc.loadText(text, { name, path, encoding, delimiter, hasHeader });
       this.doc.markUnsaved();
       this.diskStamp = this.noticedStamp = path ? await fileStamp(path) : null;
-      this.grid.widths = [];
-      this.grid.select(0, 0, false);
+      this.freshView();
       this.grid.focusGrid?.();
     }
   }
@@ -453,9 +457,7 @@ export class AppState {
       this.sourceBytes = file.bytes;
       this.diskStamp = this.noticedStamp = file.stamp ?? null;
       void this.clearRecovery();
-      this.grid.widths = [];
-      this.grid.editing = null;
-      this.grid.select(0, 0, false);
+      this.freshView();
       if (file.path) this.recent = pushRecent(file.path, file.name);
       if (!this.doc.hasHeader && this.doc.rowCount > 0) {
         this.toast('The first row looks like data, so the columns are lettered. Use “Header row” if it is a header.', 'info', 5000);
@@ -477,10 +479,15 @@ export class AppState {
     this.diskStamp = this.noticedStamp = null;
     void this.clearRecovery();
     this.doc.newSheet();
+    this.freshView();
+    this.grid.focusGrid?.();
+  }
+
+  /** Shows freshly loaded contents from the top-left corner, with nothing being edited. */
+  private freshView(): void {
     this.grid.widths = [];
     this.grid.editing = null;
     this.grid.select(0, 0, false);
-    this.grid.focusGrid?.();
   }
 
   async save(forcePrompt: boolean): Promise<boolean> {
@@ -781,13 +788,15 @@ export class AppState {
       return;
     }
     const landed = splitCols ? cols.slice(0, blockCols) : Array.from({ length: blockCols }, (_, j) => c0 + j);
+    let pastedRows = block.length;
+    let pastedCols = blockCols;
     if (g.viewRows) {
-      const room = splitCols ? cols.length : this.doc.colCount - c0;
-      const rowRoom = rowList ? rowList.length : g.rowCount - r0;
+      pastedRows = Math.min(block.length, rowList ? rowList.length : g.rowCount - r0);
+      pastedCols = Math.min(blockCols, splitCols ? cols.length : this.doc.colCount - c0);
       const edits: CellEdit[] = [];
-      for (let i = 0; i < block.length && i < rowRoom; i++) {
+      for (let i = 0; i < pastedRows; i++) {
         const r = g.dataRow(rowAt(i));
-        for (let j = 0; j < block[i].length && j < room; j++) {
+        for (let j = 0; j < block[i].length && j < pastedCols; j++) {
           edits.push({ r, c: at(j), value: block[i][j] });
         }
       }
@@ -797,13 +806,15 @@ export class AppState {
     }
     if (!split) {
       g.anchor = { r: r0, c: c0 };
-      g.extendTo(r0 + block.length - 1, c0 + blockCols - 1, false);
+      g.extendTo(r0 + pastedRows - 1, c0 + pastedCols - 1, false);
     }
-    this.widen(landed, rowAt(0), rowAt(block.length - 1));
-    const size = `${block.length} × ${blockCols}`;
+    this.widen(landed, rowAt(0), rowAt(pastedRows - 1));
+    const size = `${pastedRows} × ${pastedCols}`;
+    const rest = pastedRows < block.length || pastedCols < blockCols ? ` of ${block.length} × ${blockCols}; show all rows to paste the rest` : '';
     if (names) this.toast(`Pasted ${size}, with its header row as column names`, 'info', 3600);
     else if (placed) this.toast(`Pasted ${size}, leaving out its header row`, 'info', 3600);
-    else if (block.length > 1 || blockCols > 1) this.toast(`Pasted ${size}`);
+    else if (rest) this.toast(`Pasted ${size}${rest}`, 'info', 4000);
+    else if (pastedRows > 1 || pastedCols > 1) this.toast(`Pasted ${size}`);
   }
 
   /**
@@ -1044,8 +1055,7 @@ export class AppState {
     if (!this.doc.loaded || d === this.doc.delimiter) return;
     this.commitPending();
     if (this.doc.reparse(d)) {
-      this.grid.widths = [];
-      this.grid.select(0, 0, false);
+      this.freshView();
       this.toast(`Reading with ${delimiterLabel(d).toLowerCase()} delimiter`);
     } else {
       this.doc.setDelimiter(d);
@@ -1065,8 +1075,7 @@ export class AppState {
       const { text } = decodeBytes(this.sourceBytes, id);
       const { name, path, delimiter } = this.doc;
       this.doc.loadText(text, { name, path, encoding: id, delimiter });
-      this.grid.widths = [];
-      this.grid.select(0, 0, false);
+      this.freshView();
       this.toast(`Reading as ${id}`);
     } else {
       this.doc.setEncoding(id);
@@ -1177,29 +1186,39 @@ export class AppState {
     this.scheduleSearch(false, 120);
   }
 
+  /** Shows only the matching rows, or all of them again. The cursor stays on its row when that row still shows. */
   toggleFilterRows(): void {
+    this.commitPending();
+    const g = this.grid;
+    const dr = g.dataRow(g.anchor.r);
     this.filterRows = !this.filterRows;
     this.runSearch(false);
-    if (this.filterRows && this.grid.viewRows) this.grid.select(0, this.grid.anchor.c);
+    const vr = g.viewRow(dr);
+    if (vr >= 0) g.select(vr, g.anchor.c);
+    else if (g.viewRows) g.select(0, g.anchor.c);
   }
 
   toggleMatchCase(): void {
+    this.commitPending();
     this.matchCase = !this.matchCase;
     this.runSearch(false);
   }
 
   toggleRegex(): void {
+    this.commitPending();
     this.useRegex = !this.useRegex;
     this.runSearch(false);
   }
 
   toggleWholeCell(): void {
+    this.commitPending();
     this.wholeCell = !this.wholeCell;
     this.runSearch(false);
   }
 
   /** Limits the search to the selection, or to the whole column when only one cell is selected. */
   toggleScope(): void {
+    this.commitPending();
     const g = this.grid;
     if (this.scope || !this.hasCells) {
       this.scope = null;

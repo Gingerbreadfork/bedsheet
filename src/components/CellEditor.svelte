@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { app } from '../lib/app.svelte';
   import type { EditState } from '../lib/grid.svelte';
 
@@ -41,17 +41,20 @@
   function finish(save: boolean, move?: [number, number]): void {
     if (done) return;
     done = true;
-    const { r, c } = edit;
+    const { dr, c } = edit;
     grid.editing = null;
     if (save) {
-      const dr = grid.dataRow(r);
       const text = value.replaceAll('\r\n', '\n');
       doc.setCell(dr, c, doc.cell(dr, c).includes('\r\n') ? text.replaceAll('\n', '\r\n') : text);
     }
     if (move) grid.move(move[0], move[1], false);
     onDone();
   }
-  app.commitEdit = () => finish(true);
+  const commit = (): void => finish(true);
+  app.commitEdit = commit;
+  onDestroy(() => {
+    if (app.commitEdit === commit) app.commitEdit = null;
+  });
 
   function onKey(e: KeyboardEvent): void {
     const replaceMode = edit.mode === 'replace';

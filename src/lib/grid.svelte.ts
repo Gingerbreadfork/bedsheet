@@ -19,8 +19,11 @@ export interface RowRun {
 }
 
 export interface EditState {
+  /** The view row and column the edit was started on. */
   r: number;
   c: number;
+  /** The document row the value belongs to, fixed when the edit starts. */
+  dr: number;
   initial: string;
   mode: 'replace' | 'edit';
 }
@@ -109,10 +112,6 @@ export class GridState {
       else hi = mid - 1;
     }
     return -1;
-  }
-
-  get active(): Pos {
-    return this.anchor;
   }
 
   get range(): Range {
@@ -366,11 +365,13 @@ export class GridState {
   startEdit(mode: 'replace' | 'edit', initial?: string): void {
     if (this.rowCount === 0 || this.colCount === 0) return;
     const { r, c } = this.anchor;
+    const dr = this.dataRow(r);
     this.editing = {
       r,
       c,
+      dr,
       mode,
-      initial: initial ?? (mode === 'edit' ? this.doc.cell(this.dataRow(r), c) : ''),
+      initial: initial ?? (mode === 'edit' ? this.doc.cell(dr, c) : ''),
     };
   }
 
@@ -394,6 +395,7 @@ export class GridState {
     if (a.r !== this.anchor.r || a.c !== this.anchor.c) this.anchor = a;
     if (f.r !== this.focus.r || f.c !== this.focus.c) this.focus = f;
     if (cut) this.settleCols();
-    if (this.editing && (this.editing.r >= this.rowCount || this.editing.c >= this.colCount)) this.editing = null;
+    const e = this.editing;
+    if (e && (e.r >= this.rowCount || e.c >= this.colCount || e.dr >= this.doc.rowCount)) this.editing = null;
   }
 }

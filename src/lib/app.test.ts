@@ -73,6 +73,43 @@ describe('stepping through matches', () => {
   });
 });
 
+describe('the row filter', () => {
+  it('keeps the cursor on its row when it is turned on or off', () => {
+    load('n\nfoo1\nbar\nfoo2\n');
+    find('foo');
+    app.grid.select(2, 0, false);
+    app.toggleFilterRows();
+    expect(app.grid.viewRows).toEqual([0, 2]);
+    expect(app.grid.anchor.r).toBe(1);
+    app.toggleFilterRows();
+    expect(app.grid.viewRows).toBeNull();
+    expect(app.grid.anchor.r).toBe(2);
+  });
+
+  it('pins an edit to the document row it was started on', () => {
+    load('n\nfoo1\nbar\nfoo2\n');
+    find('foo');
+    app.toggleFilterRows();
+    app.grid.select(1, 0, false);
+    app.grid.startEdit('edit');
+    expect(app.grid.editing).toMatchObject({ r: 1, dr: 2, initial: 'foo2' });
+    app.toggleFilterRows();
+    expect(app.grid.editing?.dr).toBe(2);
+    app.grid.editing = null;
+  });
+
+  it('says how much of a block fit into the rows showing', () => {
+    load('a,b\nx,1\ny,2\nx,3\n');
+    find('x');
+    app.toggleFilterRows();
+    app.grid.select(1, 0, false);
+    app.pasteText('p\tq\nr\ts\nt\tu');
+    expect(app.doc.rows).toEqual([['x', '1'], ['y', '2'], ['p', 'q']]);
+    expect(app.grid.range).toMatchObject({ r0: 1, r1: 1, c0: 0, c1: 1 });
+    expect(app.toasts.at(-1)?.text).toBe('Pasted 1 × 2 of 3 × 2; show all rows to paste the rest');
+  });
+});
+
 describe('a filter that matches nothing', () => {
   function filterToNothing(): void {
     load('h\nalpha\nbeta\n');
@@ -169,6 +206,23 @@ describe('crash recovery', () => {
     expect(app.doc.name).toBe('notes.csv');
     expect(app.doc.dirty).toBe(true);
     expect(column()).toEqual(['kept']);
+  });
+
+  it('asks before replacing edits made while the prompt was open', async () => {
+    const { clear } = offer();
+    await settle();
+    load('h\na\n');
+    app.doc.setCell(0, 0, 'typed');
+    app.dialog!.actions.find((a) => a.label === 'Recover')!.run();
+    await settle();
+    expect(app.dialog?.title).toBe('Save changes to t.csv?');
+    app.dialog!.actions.find((a) => a.label === 'Cancel')!.run();
+    await settle();
+    expect(app.dialog).toBeNull();
+    expect(app.doc.name).toBe('t.csv');
+    expect(column()).toEqual(['typed']);
+    expect(clear).not.toHaveBeenCalled();
+    app.doc.close();
   });
 });
 
@@ -701,6 +755,17 @@ describe('editing commands', () => {
     app.grid.selectAll();
     app.pasteText('x\ty\nz\tw');
     expect(app.doc.rows).toEqual([['x', 'y'], ['z', 'w'], ['', '']]);
+  });
+
+  it('keeps the sort mark and search scope through a column rename', () => {
+    load('n,v\n3,a\n1,b\n');
+    app.sort('asc');
+    app.grid.select(0, 1, false);
+    app.toggleScope();
+    app.doc.renameColumn(0, 'num');
+    expect(app.doc.columns).toEqual(['num', 'v']);
+    expect(app.grid.sortMark).toEqual({ c: 0, dir: 'asc' });
+    expect(app.scope?.label).toBe('v');
   });
 });
 

@@ -217,6 +217,9 @@
 
   onDestroy(() => {
     if (app.autoFit === autoFit) app.autoFit = null;
+    if (app.commitHeader === commitHeader) app.commitHeader = null;
+    if (grid.scrollIntoView === scrollIntoView) grid.scrollIntoView = null;
+    if (grid.focusGrid === focusGrid) grid.focusGrid = null;
   });
 
   function autoFit(cols: number[] | 'all', widen?: { r0: number; r1: number }): void {
@@ -385,7 +388,7 @@
     }
     if (e.button === 2) return;
     if (e.button !== 0) return;
-    if (target.closest('.editor')) return;
+    if (target.closest('.editor, .hinput')) return;
     if (app.menu) app.closeMenu();
     const hit = hitTest(e);
     if (hit.kind === 'none') {
@@ -538,7 +541,7 @@
       items = cellMenu();
     } else if (hit.kind === 'header') {
       if (!(fullCols && selCols.has(hit.c))) grid.selectCols(hit.c, hit.c);
-      items = columnMenu();
+      items = columnMenu(hit.c);
     } else if (hit.kind === 'gutter') {
       if (!(fullRows && rowSelected(hit.r))) grid.selectRows(hit.r, hit.r);
       items = rowMenu();
@@ -591,8 +594,7 @@
     ];
   }
 
-  function columnMenu(): MenuItem[] {
-    const c = colRuns[0]?.c0 ?? range.c0;
+  function columnMenu(c: number): MenuItem[] {
     const split = grid.splitCols;
     return [
       { label: 'Sort ascending', run: () => app.sort('asc') },
@@ -845,7 +847,6 @@
 <div
   class="viewport"
   class:mono={grid.mono}
-  class:resizing={false}
   tabindex="-1"
   role="grid"
   aria-rowcount={rowCount}
