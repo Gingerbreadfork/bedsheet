@@ -1093,8 +1093,18 @@
   .hcell.focus {
     box-shadow: inset 0 0 0 2px var(--cursor);
   }
-  .viewport:not(:focus-within) .hcell.focus {
+  .viewport:not(:focus-within) .hcell.focus:not(.editing) {
     box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--cursor) 45%, transparent);
+  }
+  .hcell.editing {
+    z-index: 1;
+    padding: 0;
+    color: var(--ink);
+    background: var(--sheet);
+    box-shadow: inset 0 0 0 2px var(--accent), 0 8px 24px -8px oklch(20% 0.02 150 / 0.4);
+  }
+  .hcell.editing .resize {
+    display: none;
   }
   .hlabel {
     overflow: hidden;
@@ -1114,15 +1124,18 @@
   }
   .hinput {
     width: 100%;
-    height: calc(var(--head-h) - 8px);
-    padding: 0 6px;
-    margin: 0 -6px;
+    height: 100%;
+    margin: 0;
+    padding: 0 10px;
     border: 0;
-    border-radius: 4px;
-    background: var(--sheet);
-    box-shadow: 0 0 0 2px var(--accent);
+    border-radius: 0;
+    background: transparent;
     font-weight: 500;
     color: var(--ink);
+    outline: none;
+  }
+  .hcell.num .hinput {
+    text-align: right;
   }
   .resize {
     position: absolute;
