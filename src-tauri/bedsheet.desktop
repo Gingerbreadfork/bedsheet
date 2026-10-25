@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Bedsheet
-Comment=A focused CSV editor
+Comment=Fast, focused CSV editor
 Exec=bedsheet %F
 Icon=bedsheet
 Terminal=false

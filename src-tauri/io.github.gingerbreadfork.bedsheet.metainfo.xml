@@ -4,7 +4,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>Bedsheet</name>
-  <summary>A focused CSV editor</summary>
+  <summary>Fast, focused CSV editor</summary>
   <developer id="io.github.gingerbreadfork">
     <name>Gingerbreadfork</name>
   </developer>
@@ -27,6 +27,14 @@
     <category>Utility</category>
     <category>Office</category>
   </categories>
+  <branding>
+    <color type="primary" scheme_preference="light">#87cebe</color>
+    <color type="primary" scheme_preference="dark">#0d473d</color>
+  </branding>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
   <url type="homepage">https://github.com/Gingerbreadfork/bedsheet</url>
   <url type="bugtracker">https://github.com/Gingerbreadfork/bedsheet/issues</url>
   <url type="vcs-browser">https://github.com/Gingerbreadfork/bedsheet</url>
@@ -35,9 +43,17 @@
       <caption>A block of numbers selected, with their sum, average and count</caption>
       <image>https://raw.githubusercontent.com/Gingerbreadfork/bedsheet/main/docs/screenshot-light.png</image>
     </screenshot>
+    <screenshot environment="gnome:dark">
+      <caption>The same sheet in the dark theme</caption>
+      <image>https://raw.githubusercontent.com/Gingerbreadfork/bedsheet/main/docs/screenshot-dark.png</image>
+    </screenshot>
     <screenshot>
       <caption>Find and replace, showing only the matching rows</caption>
       <image>https://raw.githubusercontent.com/Gingerbreadfork/bedsheet/main/docs/find.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The command palette, listing every command with its shortcut</caption>
+      <image>https://raw.githubusercontent.com/Gingerbreadfork/bedsheet/main/docs/palette.png</image>
     </screenshot>
   </screenshots>
   <provides>
