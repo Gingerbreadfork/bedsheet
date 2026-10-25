@@ -3,7 +3,6 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export type ResizeDirection = 'East' | 'North' | 'NorthEast' | 'NorthWest' | 'South' | 'SouthEast' | 'SouthWest' | 'West';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
-import { readText as clipRead, writeText as clipWrite, writeHtml as clipWriteHtml } from '@tauri-apps/plugin-clipboard-manager';
 import { baseName } from './paths';
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -229,7 +228,7 @@ async function browserRead(): Promise<ClipContents> {
 
 export const clipboard = {
   async write({ text, html }: ClipContents): Promise<void> {
-    if (isTauri) return html ? clipWriteHtml(html, text) : clipWrite(text);
+    if (isTauri) return invoke('clipboard_write', { text, html });
     if (html && typeof ClipboardItem !== 'undefined') {
       try {
         const blob = (data: string, type: string): Blob => new Blob([data], { type });
@@ -243,8 +242,7 @@ export const clipboard = {
   },
   async read(): Promise<ClipContents> {
     if (!isTauri) return browserRead();
-    const [text, html] = await Promise.all([clipRead().catch(() => ''), invoke<string | null>('read_clipboard_html').catch(() => null)]);
-    return { text, html };
+    return invoke<ClipContents>('clipboard_read');
   },
 };
 

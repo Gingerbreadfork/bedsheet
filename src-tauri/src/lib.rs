@@ -271,10 +271,126 @@ fn recovery_pending(app: tauri::AppHandle) -> Result<Vec<RecoveryEntry>, String>
     ))
 }
 
-/// The HTML on the clipboard, if there is any. Must stay async: reading on the main thread can deadlock on Linux.
+#[derive(Serialize)]
+struct ClipContents {
+    text: String,
+    html: Option<String>,
+}
+
+/// Goes through GTK rather than arboard, which needs X11 or a protocol GNOME and sandboxes don't offer.
+#[cfg(target_os = "linux")]
+mod clip {
+    use super::ClipContents;
+    use gtk::{gdk, Clipboard, TargetEntry, TargetFlags};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    const TIMEOUT: Duration = Duration::from_secs(5);
+    const HTML: u32 = 0;
+    const TEXT: u32 = 1;
+
+    fn clipboard() -> Clipboard {
+        Clipboard::get(&gdk::SELECTION_CLIPBOARD)
+    }
+
+    /// Some browsers offer HTML as UTF-16 with a byte order mark.
+    fn decode_html(bytes: &[u8]) -> Option<String> {
+        if bytes.is_empty() {
+            return None;
+        }
+        if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+            let units: Vec<u16> = rest
+                .chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect();
+            return Some(String::from_utf16_lossy(&units));
+        }
+        Some(String::from_utf8_lossy(bytes).into_owned())
+    }
+
+    pub fn read(app: &tauri::AppHandle) -> Result<ClipContents, String> {
+        let (tx, rx) = mpsc::channel();
+        app.run_on_main_thread(move || {
+            clipboard().request_text(move |board, text| {
+                let text = text.unwrap_or_default().to_string();
+                board.request_contents(&gdk::Atom::intern("text/html"), move |_, data| {
+                    let html = decode_html(&data.data());
+                    let _ = tx.send(ClipContents { text, html });
+                });
+            });
+        })
+        .map_err(|e| e.to_string())?;
+        rx.recv_timeout(TIMEOUT).map_err(|e| e.to_string())
+    }
+
+    pub fn write(app: &tauri::AppHandle, text: String, html: Option<String>) -> Result<(), String> {
+        let (tx, rx) = mpsc::channel();
+        app.run_on_main_thread(move || {
+            let mut targets = vec![
+                TargetEntry::new("UTF8_STRING", TargetFlags::empty(), TEXT),
+                TargetEntry::new("text/plain;charset=utf-8", TargetFlags::empty(), TEXT),
+                TargetEntry::new("text/plain", TargetFlags::empty(), TEXT),
+            ];
+            if html.is_some() {
+                targets.push(TargetEntry::new("text/html", TargetFlags::empty(), HTML));
+            }
+            // Raw bytes, because GTK's own text setter turns line breaks into CRLF.
+            let set = clipboard().set_with_data(&targets, move |_, data, info| {
+                let bytes = match (&html, info) {
+                    (Some(html), HTML) => html.as_bytes(),
+                    _ => text.as_bytes(),
+                };
+                data.set(&data.target(), 8, bytes);
+            });
+            let _ = tx.send(set);
+        })
+        .map_err(|e| e.to_string())?;
+        match rx.recv_timeout(TIMEOUT) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err("could not take the clipboard".into()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+mod clip {
+    use super::ClipContents;
+
+    pub fn read(_app: &tauri::AppHandle) -> Result<ClipContents, String> {
+        let mut board = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+        let text = board.get_text().unwrap_or_default();
+        let html = board.get().html().ok();
+        Ok(ClipContents { text, html })
+    }
+
+    pub fn write(
+        _app: &tauri::AppHandle,
+        text: String,
+        html: Option<String>,
+    ) -> Result<(), String> {
+        let mut board = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+        match html {
+            Some(html) => board.set_html(html, Some(text)),
+            None => board.set_text(text),
+        }
+        .map_err(|e| e.to_string())
+    }
+}
+
+/// Must stay async: the clipboard is served by the main thread, so waiting there would deadlock.
 #[tauri::command(async)]
-fn read_clipboard_html() -> Option<String> {
-    arboard::Clipboard::new().ok()?.get().html().ok()
+fn clipboard_read(app: tauri::AppHandle) -> Result<ClipContents, String> {
+    clip::read(&app)
+}
+
+#[tauri::command(async)]
+fn clipboard_write(
+    app: tauri::AppHandle,
+    text: String,
+    html: Option<String>,
+) -> Result<(), String> {
+    clip::write(&app, text, html)
 }
 
 /// File paths passed on the command line, resolved to absolute paths.
@@ -313,7 +429,6 @@ pub fn run() {
     open_extra_files();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             read_file,
@@ -323,7 +438,8 @@ pub fn run() {
             recovery_save,
             recovery_clear,
             recovery_pending,
-            read_clipboard_html
+            clipboard_read,
+            clipboard_write
         ])
         .run(tauri::generate_context!())
         .expect("error while running bedsheet");
