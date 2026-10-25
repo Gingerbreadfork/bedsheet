@@ -1,0 +1,63 @@
+id: io.github.gingerbreadfork.bedsheet
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+command: bedsheet
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+
+modules:
+  - name: bedsheet
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/bedsheet/cargo
+        CARGO_NET_OFFLINE: 'true'
+        XDG_CACHE_HOME: /run/build/bedsheet/flatpak-node/cache
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - .git
+          - node_modules
+          - dist
+          - src-tauri/target
+          - flatpak/.flatpak-builder
+          - flatpak/build-dir
+          - flatpak/repo
+      - cargo-sources.json
+      - node-sources.json
+      # pnpm 11 and later ship as a native binary, so the build runs pnpm 10 from source.
+      - type: archive
+        url: https://registry.npmjs.org/pnpm/-/pnpm-10.34.8.tgz
+        sha256: 5be9fac9764583af5fa07015b9b0aa930ef634535df9fa6f464020d72b195630
+        dest: flatpak-node/pnpm
+    build-commands:
+      - node flatpak-node/pnpm/bin/pnpm.cjs install --offline --frozen-lockfile
+      - node flatpak-node/pnpm/bin/pnpm.cjs build
+      - cargo build --offline --locked --release --features tauri/custom-protocol --manifest-path src-tauri/Cargo.toml
+      - install -Dm755 src-tauri/target/release/bedsheet -t /app/bin
+      - |
+        for size in 32 64 128 256; do
+          install -Dm644 src-tauri/icons/${size}x${size}.png /app/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png
+        done
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 public/app-icon.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - install -Dm644 src-tauri/bedsheet.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} /app/share/applications/${FLATPAK_ID}.desktop
+      # The shared metadata names the files the .deb and .rpm install.
+      - install -Dm644 src-tauri/${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo
+      - >-
+        sed -i
+        -e "s|<launchable type=\"desktop-id\">Bedsheet.desktop</launchable>|<launchable type=\"desktop-id\">${FLATPAK_ID}.desktop</launchable>|"
+        -e "s|<icon type=\"stock\">bedsheet</icon>|<icon type=\"stock\">${FLATPAK_ID}</icon>|"
+        /app/share/metainfo/${FLATPAK_ID}.metainfo.xml

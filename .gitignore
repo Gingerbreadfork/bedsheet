@@ -4,3 +4,7 @@ src-tauri/target
 src-tauri/gen/schemas
 *.log
 .DS_Store
+flatpak/*-sources.json
+flatpak/.flatpak-builder
+flatpak/build-dir
+flatpak/repo
