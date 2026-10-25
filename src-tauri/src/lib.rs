@@ -1,6 +1,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use percent_encoding::percent_decode_str;
 use serde::Serialize;
@@ -163,66 +164,68 @@ fn recovery_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// Snapshots are named `<pid>-<id>.json` so a later launch can tell whether their owner is still running.
-fn recovery_file(dir: &Path, pid: u32, id: &str) -> Result<PathBuf, String> {
+/// This instance's name in the recovery directory, and the lock it holds there while it runs.
+static OWNER: Mutex<Option<(String, File)>> = Mutex::new(None);
+
+fn lock_file(dir: &Path, owner: &str) -> PathBuf {
+    dir.join(format!("{owner}.lock"))
+}
+
+/// Names this instance and locks its lock file until it exits. A lock rather than a process id
+/// shows it is alive, because sandboxed instances can't see each other's processes.
+fn recovery_owner(dir: &Path) -> Result<String, String> {
+    let mut owner = OWNER.lock().map_err(|e| e.to_string())?;
+    if let Some((name, _)) = owner.as_ref() {
+        return Ok(name.clone());
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let name = format!("{:x}{nanos:x}", std::process::id());
+    let lock = File::create(lock_file(dir, &name)).map_err(|e| e.to_string())?;
+    lock.try_lock().map_err(|e| e.to_string())?;
+    *owner = Some((name.clone(), lock));
+    Ok(name)
+}
+
+/// An owner without a lock file, or whose lock is free, has exited.
+fn owner_is_running(dir: &Path, owner: &str) -> bool {
+    File::open(lock_file(dir, owner)).is_ok_and(|file| file.try_lock().is_err())
+}
+
+/// Snapshots are named `<owner>-<id>.json` so a later launch can tell whether their owner is still running.
+fn recovery_file(dir: &Path, owner: &str, id: &str) -> Result<PathBuf, String> {
     if id.is_empty() || !id.bytes().all(|b| b.is_ascii_alphanumeric()) {
         return Err("invalid recovery id".into());
     }
-    Ok(dir.join(format!("{pid}-{id}.json")))
-}
-
-#[cfg(target_os = "linux")]
-fn process_is_running(pid: u32) -> bool {
-    Path::new(&format!("/proc/{pid}")).exists()
-}
-
-/// A process that exists but can't be opened, such as another user's, counts as running.
-#[cfg(windows)]
-fn process_is_running(pid: u32) -> bool {
-    use windows_sys::Win32::Foundation::{
-        CloseHandle, GetLastError, ERROR_INVALID_PARAMETER, STILL_ACTIVE,
-    };
-    use windows_sys::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    unsafe {
-        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if process.is_null() {
-            return GetLastError() != ERROR_INVALID_PARAMETER;
-        }
-        let mut code = 0u32;
-        let known = GetExitCodeProcess(process, &mut code) != 0;
-        CloseHandle(process);
-        !known || code == STILL_ACTIVE as u32
-    }
-}
-
-#[cfg(not(any(target_os = "linux", windows)))]
-fn process_is_running(_pid: u32) -> bool {
-    true
+    Ok(dir.join(format!("{owner}-{id}.json")))
 }
 
 /// Takes over the snapshots left by instances that are no longer running and returns them.
-fn claim_recovery_files(dir: &Path, own_pid: u32) -> Vec<RecoveryEntry> {
+fn claim_recovery_files(dir: &Path, own: &str) -> Vec<RecoveryEntry> {
     let mut found = Vec::new();
     let Ok(entries) = fs::read_dir(dir) else {
         return found;
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        let Some((pid, id)) = name
+        if let Some(owner) = name.strip_suffix(".lock") {
+            if owner != own && !owner_is_running(dir, owner) {
+                let _ = fs::remove_file(entry.path());
+            }
+            continue;
+        }
+        let Some((owner, id)) = name
             .strip_suffix(".json")
             .and_then(|stem| stem.split_once('-'))
         else {
             continue;
         };
-        let Ok(pid) = pid.parse::<u32>() else {
-            continue;
-        };
-        if pid == own_pid || process_is_running(pid) {
+        if owner == own || owner_is_running(dir, owner) {
             continue;
         }
-        let Ok(claimed) = recovery_file(dir, own_pid, id) else {
+        let Ok(claimed) = recovery_file(dir, own, id) else {
             continue;
         };
         if fs::rename(entry.path(), &claimed).is_err() {
@@ -250,13 +253,15 @@ fn recovery_save(app: tauri::AppHandle, request: Request<'_>) -> Result<(), Stri
         InvokeBody::Raw(b) => b,
         InvokeBody::Json(_) => return Err("expected raw body".into()),
     };
-    let file = recovery_file(&recovery_dir(&app)?, std::process::id(), id)?;
+    let dir = recovery_dir(&app)?;
+    let file = recovery_file(&dir, &recovery_owner(&dir)?, id)?;
     write_atomic(&file, bytes).map_err(|e| e.to_string())
 }
 
 #[tauri::command(async)]
 fn recovery_clear(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let file = recovery_file(&recovery_dir(&app)?, std::process::id(), &id)?;
+    let dir = recovery_dir(&app)?;
+    let file = recovery_file(&dir, &recovery_owner(&dir)?, &id)?;
     match fs::remove_file(file) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e.to_string()),
         _ => Ok(()),
@@ -265,10 +270,8 @@ fn recovery_clear(app: tauri::AppHandle, id: String) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn recovery_pending(app: tauri::AppHandle) -> Result<Vec<RecoveryEntry>, String> {
-    Ok(claim_recovery_files(
-        &recovery_dir(&app)?,
-        std::process::id(),
-    ))
+    let dir = recovery_dir(&app)?;
+    Ok(claim_recovery_files(&dir, &recovery_owner(&dir)?))
 }
 
 #[derive(Serialize)]
@@ -300,8 +303,10 @@ mod clip {
         }
         if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
             let units: Vec<u16> = rest
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .as_chunks()
+                .0
+                .iter()
+                .map(|&c| u16::from_le_bytes(c))
                 .collect();
             return Some(String::from_utf16_lossy(&units));
         }
@@ -449,9 +454,6 @@ pub fn run() {
 mod tests {
     use super::*;
 
-    /// A process that is always running: init on Linux, System on Windows.
-    const LIVE_PID: u32 = if cfg!(windows) { 4 } else { 1 };
-
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("bedsheet-test-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -475,32 +477,47 @@ mod tests {
     #[test]
     fn claims_snapshots_whose_owner_has_exited() {
         let dir = scratch("recovery");
-        let own = std::process::id();
-        let dead = 4_000_000;
+        let live = File::create(lock_file(&dir, "live")).unwrap();
+        live.try_lock().unwrap();
+        File::create(lock_file(&dir, "gone")).unwrap();
         fs::write(
-            recovery_file(&dir, dead, "abc123").unwrap(),
+            recovery_file(&dir, "gone", "abc123").unwrap(),
             "{\"name\":\"a.csv\"}",
         )
         .unwrap();
-        fs::write(recovery_file(&dir, own, "mine").unwrap(), "{}").unwrap();
-        fs::write(recovery_file(&dir, LIVE_PID, "init").unwrap(), "{}").unwrap();
+        fs::write(recovery_file(&dir, "4000000", "old").unwrap(), "{}").unwrap();
+        fs::write(recovery_file(&dir, "mine", "own").unwrap(), "{}").unwrap();
+        fs::write(recovery_file(&dir, "live", "open").unwrap(), "{}").unwrap();
         fs::write(dir.join("notes.txt"), "unrelated").unwrap();
 
-        let found = claim_recovery_files(&dir, own);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].id, "abc123");
+        let mut found = claim_recovery_files(&dir, "mine");
+        found.sort_by(|a, b| a.id.cmp(&b.id));
+        let ids: Vec<&str> = found.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["abc123", "old"]);
         assert_eq!(found[0].data, "{\"name\":\"a.csv\"}");
-        assert!(recovery_file(&dir, own, "abc123").unwrap().exists());
-        assert!(!recovery_file(&dir, dead, "abc123").unwrap().exists());
-        assert!(claim_recovery_files(&dir, own).is_empty());
+        assert!(recovery_file(&dir, "mine", "abc123").unwrap().exists());
+        assert!(!recovery_file(&dir, "gone", "abc123").unwrap().exists());
+        assert!(recovery_file(&dir, "live", "open").unwrap().exists());
+        assert!(!lock_file(&dir, "gone").exists());
+        assert!(lock_file(&dir, "live").exists());
+        assert!(claim_recovery_files(&dir, "mine").is_empty());
+    }
+
+    #[test]
+    fn holds_its_lock_while_running() {
+        let dir = scratch("owner");
+        let own = recovery_owner(&dir).unwrap();
+        assert!(owner_is_running(&dir, &own));
+        assert_eq!(recovery_owner(&dir).unwrap(), own);
+        assert!(!owner_is_running(&dir, "missing"));
     }
 
     #[test]
     fn rejects_recovery_ids_that_could_escape_the_directory() {
         let dir = scratch("recovery-id");
-        assert!(recovery_file(&dir, 1, "../evil").is_err());
-        assert!(recovery_file(&dir, 1, "").is_err());
-        assert!(recovery_file(&dir, 1, "ok42").is_ok());
+        assert!(recovery_file(&dir, "a1", "../evil").is_err());
+        assert!(recovery_file(&dir, "a1", "").is_err());
+        assert!(recovery_file(&dir, "a1", "ok42").is_ok());
     }
 
     #[test]
@@ -531,13 +548,6 @@ mod tests {
         fs::hard_link(&path, &other).unwrap();
         write_atomic(&path, b"new").unwrap();
         assert_eq!(fs::read(&other).unwrap(), b"new");
-    }
-
-    #[test]
-    fn knows_which_processes_are_running() {
-        assert!(process_is_running(std::process::id()));
-        assert!(process_is_running(LIVE_PID));
-        assert!(!process_is_running(4_000_000));
     }
 
     #[cfg(unix)]
