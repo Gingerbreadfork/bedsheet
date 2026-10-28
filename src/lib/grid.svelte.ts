@@ -46,6 +46,23 @@ function joinRuns(runs: RowRun[]): RowRun[] {
   return out;
 }
 
+const inRange = (b: Range, r: number, c: number): boolean => r >= b.r0 && r <= b.r1 && c >= b.c0 && c <= b.c1;
+
+const overlaps = (a: Range, b: Range): boolean => a.r0 <= b.r1 && b.r0 <= a.r1 && a.c0 <= b.c1 && b.c0 <= a.c1;
+
+/** The parts of block `b` that lie outside `cut`: the strips above and below it, then those left and right. */
+function subtract(b: Range, cut: Range): Range[] {
+  if (!overlaps(b, cut)) return [b];
+  const out: Range[] = [];
+  if (b.r0 < cut.r0) out.push({ r0: b.r0, c0: b.c0, r1: cut.r0 - 1, c1: b.c1 });
+  if (b.r1 > cut.r1) out.push({ r0: cut.r1 + 1, c0: b.c0, r1: b.r1, c1: b.c1 });
+  const r0 = Math.max(b.r0, cut.r0);
+  const r1 = Math.min(b.r1, cut.r1);
+  if (b.c0 < cut.c0) out.push({ r0, c0: b.c0, r1, c1: cut.c0 - 1 });
+  if (b.c1 > cut.c1) out.push({ r0, c0: cut.c1 + 1, r1, c1: b.c1 });
+  return out;
+}
+
 /** View-level state for the grid: selection, editing, layout, and search overlays. */
 export class GridState {
   anchor = $state.raw<Pos>({ r: 0, c: 0 });
@@ -63,6 +80,8 @@ export class GridState {
   pickedCols = $state.raw<number[]>([]);
   /** Runs of whole rows selected by Ctrl-clicking their numbers, besides the range's own rows. */
   pickedRows = $state.raw<RowRun[]>([]);
+  /** Blocks of cells selected by Ctrl-clicking or Ctrl-dragging, besides the range, newest first. */
+  pickedBlocks = $state.raw<Range[]>([]);
   #viewRows = $state.raw<number[] | null>(null);
   /** The column the rows were last sorted by, until something reorders them again. */
   sortMark = $state.raw<{ c: number; dir: 'asc' | 'desc' } | null>(null);
@@ -75,13 +94,16 @@ export class GridState {
 
   constructor(readonly doc: Doc) {}
 
-  /** The document rows a filter shows, or null when all of them show. Changing them drops picked rows. */
+  /** The document rows a filter shows, or null when all of them show. Changing them drops picked rows and blocks. */
   get viewRows(): number[] | null {
     return this.#viewRows;
   }
 
   set viewRows(rows: number[] | null) {
-    if (rows !== this.#viewRows && this.pickedRows.length > 0) this.pickedRows = [];
+    if (rows !== this.#viewRows) {
+      if (this.pickedRows.length > 0) this.pickedRows = [];
+      if (this.pickedBlocks.length > 0) this.pickedBlocks = [];
+    }
     this.#viewRows = rows;
   }
 
@@ -139,14 +161,40 @@ export class GridState {
     return this.pickedRows.length > 0;
   }
 
+  /** Whether the selection is cells or blocks that don't all sit side by side. */
+  get splitCells(): boolean {
+    return this.pickedBlocks.length > 0;
+  }
+
   /** Whether the selection is more than one block. */
   get isSplit(): boolean {
-    return this.splitCols || this.splitRows;
+    return this.splitCols || this.splitRows || this.splitCells;
+  }
+
+  /**
+   * The selection as blocks that don't overlap, in view coordinates. Picked rows and columns cross
+   * into one block per pair of runs; picked blocks come after the range, trimmed to what it misses.
+   */
+  get blocks(): Range[] {
+    const range = this.range;
+    if (this.pickedBlocks.length === 0) {
+      if (this.pickedRows.length === 0 && this.pickedCols.length === 0) return [range];
+      const cols = this.colRuns;
+      return this.rowRuns.flatMap((rows) => cols.map((c) => ({ r0: rows.r0, c0: c.c0, r1: rows.r1, c1: c.c1 })));
+    }
+    const out: Range[] = [range];
+    for (const b of this.pickedBlocks) {
+      let pieces = [b];
+      for (const prior of [...out]) pieces = pieces.flatMap((p) => subtract(p, prior));
+      out.push(...pieces);
+    }
+    return out;
   }
 
   /** The selected rows as runs of neighbours, top to bottom, in view rows. */
   get rowRuns(): RowRun[] {
     const { r0, r1 } = this.range;
+    if (this.pickedBlocks.length > 0) return joinRuns([{ r0, r1 }, ...this.pickedBlocks.map((b) => ({ r0: b.r0, r1: b.r1 }))]);
     return this.pickedRows.length === 0 ? [{ r0, r1 }] : joinRuns([...this.pickedRows, { r0, r1 }]);
   }
 
@@ -174,8 +222,30 @@ export class GridState {
     const { c0, c1 } = this.range;
     const out: number[] = [];
     for (let c = c0; c <= c1; c++) out.push(c);
-    if (this.pickedCols.length === 0) return out;
-    return [...new Set([...out, ...this.pickedCols])].sort((a, b) => a - b);
+    if (this.pickedCols.length === 0 && this.pickedBlocks.length === 0) return out;
+    const all = new Set(out);
+    for (const c of this.pickedCols) all.add(c);
+    for (const b of this.pickedBlocks) for (let c = b.c0; c <= b.c1; c++) all.add(c);
+    return [...all].sort((a, b) => a - b);
+  }
+
+  /** How many cells are selected. */
+  get selectedCellCount(): number {
+    return this.blocks.reduce((n, b) => n + (b.r1 - b.r0 + 1) * (b.c1 - b.c0 + 1), 0);
+  }
+
+  /** The selected cells row by row, top to bottom, each row's columns left to right, in view coordinates. */
+  get selectedCellRows(): { r: number; cols: number[] }[] {
+    if (this.pickedBlocks.length === 0) {
+      const cols = this.selectedColIndices;
+      return this.selectedViewRows.map((r) => ({ r, cols }));
+    }
+    const blocks = this.blocks;
+    return this.selectedViewRows.map((r) => {
+      const cols = new Set<number>();
+      for (const b of blocks) if (r >= b.r0 && r <= b.r1) for (let c = b.c0; c <= b.c1; c++) cols.add(c);
+      return { r, cols: [...cols].sort((a, b) => a - b) };
+    });
   }
 
   /** The selected columns as runs of neighbours, left to right. */
@@ -203,8 +273,10 @@ export class GridState {
     if (scroll) this.scrollIntoView?.(p);
   }
 
+  /** Moves the focus corner of the range. Picked blocks stay; picked rows and columns give way. */
   extendTo(r: number, c: number, scroll = true): void {
-    this.unpick();
+    if (this.pickedCols.length > 0) this.pickedCols = [];
+    if (this.pickedRows.length > 0) this.pickedRows = [];
     const p = this.clamp({ r, c });
     this.focus = p;
     if (scroll) this.scrollIntoView?.(p);
@@ -259,6 +331,7 @@ export class GridState {
    * Anything but whole columns gives way to column `c` alone. Returns whether `c` is now selected.
    */
   toggleCol(c: number): boolean {
+    if (this.pickedBlocks.length > 0) return this.toggleBlock({ r0: 0, c0: c, r1: Math.max(0, this.rowCount - 1), c1: c });
     const { r0, r1 } = this.range;
     if (r0 !== 0 || r1 < this.rowCount - 1) {
       this.selectCols(c, c);
@@ -311,6 +384,7 @@ export class GridState {
    * Anything but whole rows gives way to row `r` alone. Returns whether `r` is now selected.
    */
   toggleRow(r: number): boolean {
+    if (this.pickedBlocks.length > 0) return this.toggleBlock({ r0: r, c0: 0, r1: r, c1: Math.max(0, this.colCount - 1) });
     const { c0, c1 } = this.range;
     if (this.pickedCols.length > 0 || c0 !== 0 || c1 < this.colCount - 1) {
       this.selectRows(r, r);
@@ -351,13 +425,92 @@ export class GridState {
     this.focus = this.clamp({ r: to, c: this.colCount - 1 });
   }
 
+  /**
+   * Adds cell (r, c) to the selection as a block of its own, or takes it out when it is already selected,
+   * splitting the block it was part of. Returns whether the cell is now selected.
+   */
+  toggleCell(r: number, c: number): boolean {
+    return this.toggleBlock({ r0: r, c0: c, r1: r, c1: c });
+  }
+
+  /**
+   * Adds `block` as the range, with the anchor at its top-left corner, moving what was selected into the
+   * picked blocks. When every cell of it is selected already, it is cut out of the selection instead,
+   * unless nothing would be left. Returns whether its cells are selected afterwards.
+   */
+  private toggleBlock(block: Range): boolean {
+    const held = this.blocks;
+    if (this.pickedCols.length > 0) this.pickedCols = [];
+    if (this.pickedRows.length > 0) this.pickedRows = [];
+    if (!this.isCovered(held, block)) {
+      this.pickedBlocks = held;
+      this.anchor = { r: block.r0, c: block.c0 };
+      this.focus = { r: block.r1, c: block.c1 };
+      this.settleCells();
+      return true;
+    }
+    const rest = held.flatMap((b) => subtract(b, block));
+    if (rest.length === 0) {
+      this.pickedBlocks = held.slice(1);
+      return true;
+    }
+    const a = this.anchor;
+    const own = rest.find((b) => inRange(b, a.r, a.c)) ?? rest[0];
+    const atCorner = inRange(own, a.r, a.c) && (a.r === own.r0 || a.r === own.r1) && (a.c === own.c0 || a.c === own.c1);
+    const from = atCorner ? a : { r: own.r0, c: own.c0 };
+    this.pickedBlocks = rest.filter((b) => b !== own);
+    this.anchor = from;
+    this.focus = { r: from.r === own.r0 ? own.r1 : own.r0, c: from.c === own.c0 ? own.c1 : own.c0 };
+    return false;
+  }
+
+  /** Whether `blocks` cover every cell of `block`. */
+  private isCovered(blocks: Range[], block: Range): boolean {
+    let left = [block];
+    for (const b of blocks) {
+      left = left.flatMap((p) => subtract(p, b));
+      if (left.length === 0) return true;
+    }
+    return false;
+  }
+
+  /** Stretches the selection to the whole rows it touches; rows that are apart stay apart. */
+  widenToRows(): void {
+    const runs = this.rowRuns;
+    const at = this.anchor.r;
+    this.unpick();
+    if (runs.length === 1) this.selectRows(runs[0].r0, runs[0].r1);
+    else this.selectRowRuns(runs, at);
+  }
+
+  /** Stretches the selection to the whole columns it touches; columns that are apart stay apart. */
+  widenToCols(): void {
+    const cols = this.selectedColIndices;
+    const runs = this.colRuns.length;
+    const at = this.anchor.c;
+    this.unpick();
+    if (runs === 1) this.selectCols(cols[0], cols[cols.length - 1]);
+    else this.selectColSet(cols, at);
+  }
+
+  /** Trims the picked blocks to the cells the range doesn't cover, so none is selected twice. */
+  settleCells(): void {
+    if (this.pickedBlocks.length === 0) return;
+    const range = this.range;
+    const trimmed = this.pickedBlocks.flatMap((b) => subtract(b, range));
+    const same = trimmed.length === this.pickedBlocks.length && trimmed.every((b, i) => b === this.pickedBlocks[i]);
+    if (!same) this.pickedBlocks = trimmed;
+  }
+
   private unpick(): void {
     if (this.pickedCols.length > 0) this.pickedCols = [];
     if (this.pickedRows.length > 0) this.pickedRows = [];
+    if (this.pickedBlocks.length > 0) this.pickedBlocks = [];
   }
 
   contains(r: number, c: number): boolean {
     const g = this.range;
+    if (this.pickedBlocks.some((b) => inRange(b, r, c))) return true;
     const inRows = (r >= g.r0 && r <= g.r1) || this.pickedRows.some((run) => r >= run.r0 && r <= run.r1);
     return inRows && ((c >= g.c0 && c <= g.c1) || this.pickedCols.includes(c));
   }
@@ -390,6 +543,7 @@ export class GridState {
       if (this.focus.c !== last) this.focus = { r: this.focus.r, c: last };
       if (this.pickedRows.some((run) => run.r1 >= this.rowCount)) this.pickedRows = [];
     }
+    if (this.pickedBlocks.some((b) => b.r1 >= this.rowCount || b.c1 >= this.colCount)) this.pickedBlocks = [];
     const a = this.clamp(this.anchor);
     const f = this.clamp(this.focus);
     if (a.r !== this.anchor.r || a.c !== this.anchor.c) this.anchor = a;

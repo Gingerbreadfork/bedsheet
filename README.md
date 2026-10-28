@@ -44,7 +44,8 @@ emoji pickers included), press Enter or F2 to edit it,
 Alt+Enter for a line break inside a cell. Tab and Enter commit and move. Every change is
 undoable, including sorts and structural changes.
 
-**Handles the whole sheet.** Range, row, column, and select-all selection. Copy, cut, and
+**Handles the whole sheet.** Range, row, column, and select-all selection, and Ctrl-click to
+pick cells, rows, or columns that aren't side by side. Copy, cut, and
 paste blocks to and from other apps. Copied cells paste into documents like Google Docs as a
 plain table that takes the document's own styling, columns selected by their headers copy with
 their names (as does a sheet with no rows), a pasted table's header row lands in the column
@@ -177,6 +178,10 @@ Everything is reachable from the keyboard. This is the full set; Ctrl+/ shows it
 - Ctrl-click column headers or row numbers to select columns or rows that aren't side by
   side, and Ctrl-click one again to leave it out. Copy, clear, delete and find in selection
   work on just those, and a paste fills them in order.
+- Ctrl-click cells to select cells that aren't side by side, Ctrl-drag to add a block, and
+  Ctrl-click a cell again to leave it out. Copy, clear, fill and find in selection work on
+  just those cells, and the row and column commands work on the rows and columns they sit
+  in, so Delete rows takes out every row with a selected cell. Shift+Space selects those rows.
 - Paste a single value into a multi-cell selection and it fills every cell. Paste a block
   into a selection it divides evenly and it repeats to fill it.
 - Paste a block bigger than the sheet and the sheet grows to fit.

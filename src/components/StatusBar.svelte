@@ -31,14 +31,15 @@
     }
     const rows = grid.selectedRowCount;
     const cols = selCols.length;
-    const cells = rows * cols;
+    const cells = grid.selectedCellCount;
     let stats = '';
     if (cells <= 200_000) {
       let sum = 0;
       let count = 0;
-      for (const r of grid.selectedRowIndices) {
-        const row = doc.rows[r];
-        for (const c of selCols) {
+      for (const { r: vr, cols: rc } of grid.selectedCellRows) {
+        const row = doc.rows[grid.dataRow(vr)];
+        if (!row) continue;
+        for (const c of rc) {
           const v = row[c];
           if (v && isNumeric(v.trim())) {
             sum += toNumber(v);
@@ -50,7 +51,12 @@
     } else {
       stats = 'Too many cells to total';
     }
-    return { text: `${rows.toLocaleString()} × ${cols.toLocaleString()} selected`, type: typeLabel, stats };
+    let text = `${rows.toLocaleString()} × ${cols.toLocaleString()} selected`;
+    if (grid.splitCells) {
+      text = `${cells.toLocaleString()} cells selected`;
+      if (rows > 1) text = `${cells.toLocaleString()} cells in ${rows.toLocaleString()} rows selected`;
+    }
+    return { text, type: typeLabel, stats };
   });
 
   function delimiterMenu(e: MouseEvent): void {

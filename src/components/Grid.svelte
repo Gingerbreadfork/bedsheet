@@ -103,8 +103,8 @@
   let active = $derived(grid.anchor);
   let matchIndex = $derived(grid.matchIndex);
   let currentMatch = $derived(matchIndex >= 0 ? grid.matches[matchIndex] : null);
-  let colRuns = $derived(grid.colRuns);
   let rowRuns = $derived(grid.rowRuns);
+  let blocks = $derived(grid.blocks);
   let selCols = $derived(new Set(grid.selectedColIndices));
   let fullRows = $derived(range.c0 === 0 && range.c1 === colCount - 1 && colCount > 0);
   let fullCols = $derived(range.r0 === 0 && range.r1 === rowCount - 1 && rowCount > 0);
@@ -121,16 +121,16 @@
 
   let selRects = $derived.by(() => {
     if (rowCount === 0 || colCount === 0) return [];
-    return rowRuns.flatMap((rows) => {
-      const top = nearView(rows.r0 * rowH);
-      const bottom = nearView((rows.r1 + 1) * rowH);
-      return colRuns.map((cols) => ({
-        key: `${rows.r0}:${cols.c0}`,
-        left: gutterW + colLefts[cols.c0],
+    return blocks.map((b) => {
+      const top = nearView(b.r0 * rowH);
+      const bottom = nearView((b.r1 + 1) * rowH);
+      return {
+        key: `${b.r0}:${b.c0}`,
+        left: gutterW + colLefts[b.c0],
         top: headH + top + shift,
-        width: colLefts[cols.c1 + 1] - colLefts[cols.c0],
+        width: colLefts[b.c1 + 1] - colLefts[b.c0],
         height: Math.max(0, bottom - top),
-      }));
+      };
     });
   });
   let activeRect = $derived.by(() => {
@@ -428,9 +428,13 @@
         }
         break;
       case 'cell':
-        if (e.shiftKey) grid.extendTo(hit.r, hit.c, false);
-        else grid.select(hit.r, hit.c, false);
-        drag = { kind: 'cells' };
+        if (e.ctrlKey || e.metaKey) {
+          if (grid.toggleCell(hit.r, hit.c)) drag = { kind: 'cells' };
+        } else {
+          if (e.shiftKey) grid.extendTo(hit.r, hit.c, false);
+          else grid.select(hit.r, hit.c, false);
+          drag = { kind: 'cells' };
+        }
         break;
       case 'addRow':
         addRowAtEnd();
@@ -506,6 +510,7 @@
     if (viewport?.hasPointerCapture(e.pointerId)) viewport.releasePointerCapture(e.pointerId);
     if (drag.kind === 'cols') grid.settleCols();
     else if (drag.kind === 'rows') grid.settleRows();
+    grid.settleCells();
     drag = null;
     lastPointer = null;
     if (autoScrollRaf) cancelAnimationFrame(autoScrollRaf);
@@ -540,10 +545,10 @@
       if (!grid.contains(hit.r, hit.c)) grid.select(hit.r, hit.c, false);
       items = cellMenu();
     } else if (hit.kind === 'header') {
-      if (!(fullCols && selCols.has(hit.c))) grid.selectCols(hit.c, hit.c);
+      if (!(selCols.has(hit.c) && (fullCols || grid.splitCells))) grid.selectCols(hit.c, hit.c);
       items = columnMenu(hit.c);
     } else if (hit.kind === 'gutter') {
-      if (!(fullRows && rowSelected(hit.r))) grid.selectRows(hit.r, hit.r);
+      if (!(rowSelected(hit.r) && (fullRows || grid.splitCells))) grid.selectRows(hit.r, hit.r);
       items = rowMenu();
     } else if (hit.kind === 'corner') {
       grid.selectAll();
@@ -579,7 +584,7 @@
   }
 
   function rowMenu(): MenuItem[] {
-    const split = grid.splitRows;
+    const split = grid.isSplit;
     return [
       { label: 'Copy', shortcut: 'Ctrl+C', run: () => app.copy() },
       { label: 'Clear', shortcut: 'Delete', run: () => app.clearSelection() },
@@ -595,7 +600,7 @@
   }
 
   function columnMenu(c: number): MenuItem[] {
-    const split = grid.splitCols;
+    const split = grid.isSplit;
     return [
       { label: 'Sort ascending', run: () => app.sort('asc') },
       { label: 'Sort descending', run: () => app.sort('desc') },
@@ -742,8 +747,8 @@
         grid.startEdit('edit');
         break;
       case ' ':
-        if (shift) grid.selectRows(range.r0, range.r1);
-        else if (ctrl) grid.selectCols(range.c0, range.c1);
+        if (shift) grid.widenToRows();
+        else if (ctrl) grid.widenToCols();
         else grid.startEdit('replace', ' ');
         break;
       case 'Escape':
