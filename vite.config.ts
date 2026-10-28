@@ -52,7 +52,7 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     host: host || false,
-    watch: { ignored: ['**/src-tauri/**'] },
+    watch: { ignored: ['**/src-tauri/**', '**/flatpak/**'] },
   },
   build: {
     target: 'safari15',
