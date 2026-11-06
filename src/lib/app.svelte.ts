@@ -687,7 +687,7 @@ export class AppState {
       }
     }
     const cells = rows.reduce((n, row) => n + row.length, 0);
-    const text = cells === 1 ? rows[0][0] : serializeCsv(rows, '\t', '\n');
+    const text = cells === 1 ? rows[0][0] : serializeCsv(rows, '\t', '\n', { quoteEmptyTail: false });
     const html = cells === 1 || cells > HTML_MAX_CELLS ? null : toHtmlTable(rows, names);
     this.copied = { text, block: { rows, header: names } };
     return { text, html };

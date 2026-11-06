@@ -120,6 +120,8 @@ function detectQuoting(rows: string[][], quoted: boolean[][], delimiter: string)
   return { style, empty: empty === 0 || mostly(emptyQuoted, empty) };
 }
 
+const isBlankLine = (row: string[], quoted: boolean): boolean => row.length === 1 && row[0] === '' && !quoted;
+
 /** RFC 4180 parser. Tolerates unterminated quotes, mixed line endings, and ragged rows. */
 export function parseCsv(text: string, delimiter: string): ParseResult {
   const rows: string[][] = [];
@@ -132,6 +134,9 @@ export function parseCsv(text: string, delimiter: string): ParseResult {
   let cr = 0;
   const quoted: boolean[][] = [];
   let quotedRow: boolean[] = [];
+  /** How many rows at the end are blank lines, rather than a quoted empty field. */
+  let blankTail = 0;
+  let firstQuoted = false;
 
   if (i >= n) {
     return { rows, columnCount: 0, lineEnding: '\n', ragged: false, finalNewline: true, quoting: MINIMAL_QUOTING };
@@ -140,6 +145,7 @@ export function parseCsv(text: string, delimiter: string): ParseResult {
   for (;;) {
     let field: string;
     const sampling = rows.length < QUOTING_SAMPLE_ROWS;
+    if (row.length === 0) firstQuoted = text.charCodeAt(i) === QUOTE;
     if (sampling) quotedRow.push(text.charCodeAt(i) === QUOTE);
     if (text.charCodeAt(i) === QUOTE) {
       i++;
@@ -186,6 +192,7 @@ export function parseCsv(text: string, delimiter: string): ParseResult {
     if (i >= n) {
       if (sampling) quoted.push(quotedRow);
       rows.push(row);
+      blankTail = isBlankLine(row, firstQuoted) ? blankTail + 1 : 0;
       break;
     }
     const c = text.charCodeAt(i);
@@ -214,15 +221,12 @@ export function parseCsv(text: string, delimiter: string): ParseResult {
     if (sampling) quoted.push(quotedRow);
     quotedRow = [];
     rows.push(row);
+    blankTail = isBlankLine(row, firstQuoted) ? blankTail + 1 : 0;
     row = [];
     if (i >= n) break;
   }
 
-  while (rows.length > 0) {
-    const last = rows[rows.length - 1];
-    if (last.length === 1 && last[0] === '') rows.pop();
-    else break;
-  }
+  rows.length -= blankTail;
 
   let columnCount = 0;
   for (const r of rows) if (r.length > columnCount) columnCount = r.length;
@@ -273,17 +277,25 @@ export function serializeRow(row: readonly string[], delimiter: string, quoting:
 export interface SerializeOptions {
   quoting?: Quoting;
   finalNewline?: boolean;
+  /** Quotes the empty one-field rows at the end, so reading the text back keeps them instead of taking them for blank lines. */
+  quoteEmptyTail?: boolean;
 }
 
 export function serializeCsv(
   rows: Iterable<readonly string[]>,
   delimiter: string,
   lineEnding: LineEnding = '\n',
-  { quoting = MINIMAL_QUOTING, finalNewline = true }: SerializeOptions = {},
+  { quoting = MINIMAL_QUOTING, finalNewline = true, quoteEmptyTail = true }: SerializeOptions = {},
 ): string {
   const lines: string[] = [];
-  for (const r of rows) lines.push(serializeRow(r, delimiter, quoting));
+  let blankTail = 0;
+  for (const r of rows) {
+    const line = serializeRow(r, delimiter, quoting);
+    blankTail = quoteEmptyTail && line === '' && r.length === 1 ? blankTail + 1 : 0;
+    lines.push(line);
+  }
   if (lines.length === 0) return '';
+  for (let i = lines.length - blankTail; i < lines.length; i++) lines[i] = '""';
   return lines.join(lineEnding) + (finalNewline ? lineEnding : '');
 }
 

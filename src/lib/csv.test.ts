@@ -26,6 +26,14 @@ describe('parseCsv', () => {
     const r = parseCsv('a\n\nb\n\n\n', ',');
     expect(r.rows).toEqual([['a'], [''], ['b']]);
   });
+  it('keeps quoted empty records at the end', () => {
+    expect(parseCsv('h\nvalue\n""\n', ',').rows).toEqual([['h'], ['value'], ['']]);
+    expect(parseCsv('h\n""\n""\n\n', ',').rows).toEqual([['h'], [''], ['']]);
+    expect(parseCsv('""', ',').rows).toEqual([['']]);
+    const long = parseCsv('h\n' + 'v\n'.repeat(250) + '""\n', ',').rows;
+    expect(long).toHaveLength(252);
+    expect(long.at(-1)).toEqual(['']);
+  });
   it('strips BOM', () => {
     expect(parseCsv('﻿a,b', ',').rows).toEqual([['a', 'b']]);
   });
@@ -100,6 +108,15 @@ describe('round trip', () => {
   it('keeps files that quote text but not numbers', () => {
     const text = '"id","name","score"\n1,"ann",9.5\n2,"bob",-3\n3,"",1e3\n';
     expect(roundTrip(text)).toBe(text);
+  });
+
+  it('keeps empty records at the end of a one-column file', () => {
+    for (const text of ['h\nvalue\n""\n', 'h\n""\n""\n', 'h\n""', 'a\n\nb\n']) expect(roundTrip(text)).toBe(text);
+  });
+
+  it('quotes empty one-field rows only at the end, and only when asked', () => {
+    expect(serializeCsv([['a'], [''], ['b'], ['']], ',')).toBe('a\n\nb\n""\n');
+    expect(serializeCsv([['a'], ['']], '\t', '\n', { quoteEmptyTail: false })).toBe('a\n\n');
   });
 
   it('leaves minimally quoted files minimal', () => {
