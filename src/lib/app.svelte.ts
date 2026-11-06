@@ -176,6 +176,7 @@ export class AppState {
   private noticedStamp: FileStamp | null = null;
   private recoveryId = Math.random().toString(36).slice(2, 12);
   private recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  private saving: Promise<unknown> = Promise.resolve();
 
   constructor() {
     this.grid.mono = loadSetting('mono', false);
@@ -494,28 +495,43 @@ export class AppState {
     this.grid.select(0, 0, false);
   }
 
-  async save(forcePrompt: boolean): Promise<boolean> {
-    if (!this.doc.loaded) return false;
+  /** Saves once any save already under way has finished, so two writes to one file can't land out of order. */
+  save(forcePrompt: boolean): Promise<boolean> {
+    if (!this.doc.loaded) return Promise.resolve(false);
     this.commitPending();
-    const name = /\.[a-z0-9]{1,5}$/i.test(this.doc.name) ? this.doc.name : `${this.doc.name}.csv`;
-    if (!forcePrompt && this.doc.path && !(await this.confirmOverwrite(this.doc.path))) return false;
+    const generation = this.doc.generation;
+    const run = this.saving.then(() => this.writeFile(forcePrompt, generation));
+    this.saving = run.catch(() => false);
+    return run;
+  }
+
+  /** Writes the document out, unless it was replaced while waiting. The result only marks the document it came from. */
+  private async writeFile(forcePrompt: boolean, generation: number): Promise<boolean> {
+    const doc = this.doc;
+    const current = (): boolean => doc.generation === generation;
+    if (!current()) return false;
+    const name = /\.[a-z0-9]{1,5}$/i.test(doc.name) ? doc.name : `${doc.name}.csv`;
+    if (!forcePrompt && doc.path && !(await this.confirmOverwrite(doc.path))) return false;
+    if (!current()) return false;
     try {
-      const savePoint = this.doc.savePoint();
-      const text = this.doc.toText();
-      const wanted = this.doc.encoding;
+      const savePoint = doc.savePoint();
+      const text = doc.toText();
+      const wanted = doc.encoding;
       const bytes = encodeText(text, wanted);
-      const result = await saveBytes(bytes ?? encodeText(text, 'UTF-8')!, name, this.doc.path, forcePrompt);
+      const result = await saveBytes(bytes ?? encodeText(text, 'UTF-8')!, name, doc.path, forcePrompt);
       if (!result) return false;
-      this.sourceBytes = null;
-      this.diskStamp = this.noticedStamp = result.stamp ?? null;
-      this.doc.markSaved(result.path, result.name, savePoint);
-      if (this.doc.dirty) this.scheduleRecovery();
-      else void this.clearRecovery();
       if (result.path) this.recent = pushRecent(result.path, result.name);
+      if (current()) {
+        this.sourceBytes = null;
+        this.diskStamp = this.noticedStamp = result.stamp ?? null;
+        doc.markSaved(result.path, result.name, savePoint);
+        if (!bytes) doc.encoding = 'UTF-8';
+        if (doc.dirty) this.scheduleRecovery();
+        else void this.clearRecovery();
+      }
       if (bytes) {
         this.toast(`Saved ${result.name}`, 'success');
       } else {
-        this.doc.encoding = 'UTF-8';
         const multi = ENCODINGS.find((e) => e.id === wanted)?.kind === 'multi';
         const why = multi ? `Bedsheet can’t write ${wanted}` : `${wanted} can’t hold every character in it`;
         this.toast(`Saved ${result.name} as UTF-8 because ${why}`, 'info', 6000);

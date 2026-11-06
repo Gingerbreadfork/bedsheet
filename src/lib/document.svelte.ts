@@ -58,6 +58,8 @@ export class Doc {
   lineEnding: LineEnding = '\n';
   quoting: Quoting = MINIMAL_QUOTING;
   finalNewline = true;
+  /** Goes up each time the contents are replaced or closed, so slow work can tell it outlived the document it started on. */
+  generation = 0;
 
   columns: string[] = [];
   rows: string[][] = [];
@@ -667,6 +669,7 @@ export class Doc {
   }
 
   private reset(): void {
+    this.generation++;
     this.undoStack = [];
     this.redoStack = [];
     this.cleanTop = null;

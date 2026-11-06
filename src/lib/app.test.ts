@@ -1,8 +1,14 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { app } from './app.svelte';
-import { clipboard, recovery } from './platform';
+import { clipboard, recovery, saveBytes } from './platform';
 import { toHtmlTable } from './clipboard';
+import { baseName } from './paths';
+
+vi.mock('./platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./platform')>();
+  return { ...actual, saveBytes: vi.fn(actual.saveBytes) };
+});
 
 vi.stubGlobal('requestAnimationFrame', (fn: () => void) => setTimeout(fn, 0));
 
@@ -256,6 +262,58 @@ describe('crash recovery', () => {
     expect(column()).toEqual(['typed']);
     expect(clear).not.toHaveBeenCalled();
     app.doc.close();
+  });
+});
+
+describe('saving', () => {
+  /** Holds the next write open until `finish` is called with the path it went to. */
+  function holdSave(): { started: Promise<void>; finish: (path: string) => void } {
+    let finish: (path: string) => void = () => {};
+    let started!: () => void;
+    const startedP = new Promise<void>((r) => (started = r));
+    vi.mocked(saveBytes).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = (path) => resolve({ path, name: baseName(path), stamp: null });
+          started();
+        }),
+    );
+    return { started: startedP, finish: (path) => finish(path) };
+  }
+
+  it('leaves a sheet opened while the save was under way alone', async () => {
+    load('h\na\n');
+    const hold = holdSave();
+    const saved = app.save(false);
+    await hold.started;
+    await app.newSheet();
+    hold.finish('/tmp/t.csv');
+    expect(await saved).toBe(true);
+    expect(app.doc.path).toBeNull();
+    expect(app.doc.name).toBe('Untitled');
+  });
+
+  it('writes one save at a time and marks the sheet saved only up to what was written', async () => {
+    load('h\na\n');
+    const first = holdSave();
+    const one = app.save(false);
+    await first.started;
+    app.doc.setCell(0, 0, 'b');
+    const second = holdSave();
+    let secondStarted = false;
+    void second.started.then(() => (secondStarted = true));
+    const two = app.save(false);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(secondStarted).toBe(false);
+    first.finish('/tmp/t.csv');
+    expect(await one).toBe(true);
+    expect(app.doc.dirty).toBe(true);
+    await second.started;
+    const written = new TextDecoder().decode(vi.mocked(saveBytes).mock.lastCall![0]);
+    expect(written).toBe('h\nb\n');
+    second.finish('/tmp/t.csv');
+    expect(await two).toBe(true);
+    expect(app.doc.dirty).toBe(false);
   });
 });
 
