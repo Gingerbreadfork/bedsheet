@@ -364,6 +364,40 @@ describe('undo and redo', () => {
 });
 
 describe('clipboard', () => {
+  /** Holds clipboard writes open until `done` is called. */
+  function holdClipboard(): { write: ReturnType<typeof vi.spyOn>; done: () => void } {
+    let done: () => void = () => {};
+    const write = vi.spyOn(clipboard, 'write').mockImplementation(() => new Promise<void>((r) => (done = r)));
+    return { write, done: () => done() };
+  }
+
+  it('cuts the cells it copied even when the selection moves before the clipboard is written', async () => {
+    load('h\nalpha\nbeta\n');
+    const hold = holdClipboard();
+    const cut = app.cut();
+    app.grid.select(1, 0, false);
+    hold.done();
+    await cut;
+    expect(hold.write.mock.calls[0][0]).toMatchObject({ text: 'alpha' });
+    expect(column()).toEqual(['', 'beta']);
+  });
+
+  it('leaves the cells alone when the sheet changes before the clipboard is written', async () => {
+    load('h\nalpha\nbeta\n');
+    const hold = holdClipboard();
+    const cut = app.cut();
+    app.doc.deleteRows([0]);
+    hold.done();
+    await cut;
+    expect(column()).toEqual(['beta']);
+    load('h\nalpha\n');
+    const other = app.cut();
+    await app.newSheet();
+    hold.done();
+    await other;
+    expect(app.doc.isBlank()).toBe(true);
+  });
+
   it('pastes a copied multi-line cell back as one cell', () => {
     load('h\n"line1\nline2"\nplain\n');
     app.grid.select(0, 0, false);

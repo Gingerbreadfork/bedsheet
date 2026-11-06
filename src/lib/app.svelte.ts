@@ -708,12 +708,21 @@ export class AppState {
     else this.toastCells('Copied', false);
   }
 
+  /** Clears the cells that were copied, as long as the sheet didn't change while the clipboard was being written. */
   async cut(): Promise<void> {
     if (!this.hasCells) return;
     this.commitPending();
-    await clipboard.write(this.selectionClip());
-    this.doc.setCells(this.selectionEdits(() => ''), 'Cut');
-    this.toastCells('Cut', true);
+    const clip = this.selectionClip();
+    const edits = this.selectionEdits(() => '');
+    const message = this.cellsMessage('Cut', true);
+    const rev = this.doc.rev;
+    await clipboard.write(clip);
+    if (this.doc.rev !== rev) {
+      this.toast('Copied, but the sheet changed before the cells could be cleared');
+      return;
+    }
+    this.doc.setCells(edits, 'Cut');
+    if (message) this.toast(message);
   }
 
   /** Pastes at the selection, or into a new sheet when no file is open. */
@@ -961,13 +970,18 @@ export class AppState {
 
   /** Says how much was copied or cut, and whether the headers went along. */
   toastCells(verb: string, single: boolean): void {
+    const message = this.cellsMessage(verb, single);
+    if (message) this.toast(message);
+  }
+
+  private cellsMessage(verb: string, single: boolean): string | null {
     const cols = this.grid.selectedColIndices.length;
     const n = this.grid.selectedCellCount;
     const headers = this.copiesNames && this.doc.hasHeader ? ` with ${cols === 1 ? 'the header' : 'headers'}` : '';
-    if (this.namesOnly) this.toast(`${verb} ${cols} column ${cols === 1 ? 'name' : 'names'}`);
-    else if (n > 1) this.toast(`${verb} ${n} cells${headers}`);
-    else if (headers) this.toast(`${verb} cell${headers}`);
-    else if (single) this.toast(verb);
+    if (this.namesOnly) return `${verb} ${cols} column ${cols === 1 ? 'name' : 'names'}`;
+    if (n > 1) return `${verb} ${n} cells${headers}`;
+    if (headers) return `${verb} cell${headers}`;
+    return single ? verb : null;
   }
 
   // ---------- rows & columns ----------
