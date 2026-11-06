@@ -311,8 +311,7 @@ export class AppState {
         await recovery.clear(id).catch(() => {});
         continue;
       }
-      this.commitPending();
-      if (this.doc.dirty && !(await this.confirmDiscard())) continue;
+      if (!(await this.confirmDiscard())) continue;
       this.resetFind();
       this.sourceBytes = null;
       this.recoveryId = id;
@@ -393,7 +392,9 @@ export class AppState {
     });
   }
 
+  /** Asks before throwing away unsaved work, counting an edit still open in a cell or header. */
   confirmDiscard(): Promise<boolean> {
+    this.commitPending();
     if (!this.doc.dirty) return Promise.resolve(true);
     return new Promise((resolve) => {
       const close = (v: boolean) => {
@@ -477,7 +478,6 @@ export class AppState {
 
   async newSheet(): Promise<void> {
     if (!(await this.confirmDiscard())) return;
-    this.commitPending();
     this.resetFind();
     this.sourceBytes = null;
     this.diskStamp = this.noticedStamp = null;
@@ -560,7 +560,6 @@ export class AppState {
 
   async closeFile(): Promise<void> {
     if (!(await this.confirmDiscard())) return;
-    this.commitPending();
     this.sourceBytes = null;
     void this.clearRecovery();
     this.doc.close();

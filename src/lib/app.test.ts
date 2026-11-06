@@ -164,6 +164,39 @@ describe('dialogs', () => {
   });
 });
 
+describe('an edit still open in a cell or header', () => {
+  const actions = { quit: () => app.quit(), 'new sheet': () => app.newSheet(), close: () => app.closeFile() };
+
+  for (const [name, action] of Object.entries(actions)) {
+    it(`counts as unsaved work on ${name}`, async () => {
+      load('h\na\n');
+      app.commitEdit = () => {
+        app.doc.setCell(0, 0, 'typed');
+        app.commitEdit = null;
+      };
+      const done = action();
+      expect(app.dialog?.title).toBe('Save changes to t.csv?');
+      app.dialog!.actions.find((a) => a.label === 'Cancel')!.run();
+      await done;
+      expect(app.doc.loaded).toBe(true);
+      expect(column()).toEqual(['typed']);
+    });
+  }
+
+  it('counts a column being renamed', async () => {
+    load('h\na\n');
+    app.commitHeader = () => {
+      app.doc.renameColumn(0, 'renamed');
+      app.commitHeader = null;
+    };
+    const done = app.quit();
+    expect(app.dialog?.title).toBe('Save changes to t.csv?');
+    app.dialog!.actions.find((a) => a.label === 'Cancel')!.run();
+    await done;
+    expect(app.doc.columns).toEqual(['renamed']);
+  });
+});
+
 describe('crash recovery', () => {
   const snapshot = { name: 'notes.csv', path: '/tmp/notes.csv', encoding: 'UTF-8', delimiter: ',', hasHeader: true, savedAt: 0, text: 'a\nkept\n' };
 
