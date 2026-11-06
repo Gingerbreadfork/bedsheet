@@ -169,6 +169,7 @@ export class AppState {
   readonly commands: CommandDef[];
   private bindings: { s: Shortcut; cmd: CommandDef }[] = [];
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
+  private pendingKeepView = false;
   private preserveView = false;
   private copied: { text: string; block: ClipBlock } | null = null;
   private sourceBytes: Uint8Array | null = null;
@@ -1181,7 +1182,13 @@ export class AppState {
 
   scheduleSearch(keepView: boolean, ms: number): void {
     clearTimeout(this.searchTimer);
+    this.pendingKeepView = keepView;
     this.searchTimer = setTimeout(() => this.runSearch(keepView), ms);
+  }
+
+  /** Runs a search still waiting out its delay, so the matches fit the current query and cells. */
+  private flushSearch(): void {
+    if (this.searchTimer !== undefined) this.runSearch(this.pendingKeepView);
   }
 
   runSearch(keepView: boolean): void {
@@ -1349,7 +1356,7 @@ export class AppState {
 
   stepMatch(dir: 1 | -1): void {
     const g = this.grid;
-    if (this.searchTimer !== undefined) this.runSearch(false);
+    this.flushSearch();
     const n = g.matches.length;
     if (n === 0) return;
     let i = g.matchIndex;
@@ -1381,15 +1388,18 @@ export class AppState {
     if (vr >= 0) g.select(vr, p.c);
   }
 
+  /** Replaces the current match, or first moves to the nearest one when there is none or it no longer matches. */
   replaceCurrent(): void {
     const g = this.grid;
+    const shown = g.matches[g.matchIndex];
+    this.flushSearch();
     if (g.matches.length === 0) return;
     let i = g.matchIndex;
-    if (i < 0) {
+    const p = g.matches[i];
+    if (!p || !shown || p.r !== shown.r || p.c !== shown.c) {
       this.goToMatch(this.nearestMatch(1));
       return;
     }
-    const p = g.matches[i];
     const v = this.doc.cell(p.r, p.c);
     this.doc.setCell(p.r, p.c, this.replaceIn(v));
     this.runSearch(true);
@@ -1401,6 +1411,7 @@ export class AppState {
 
   replaceAll(): void {
     const g = this.grid;
+    this.flushSearch();
     if (g.matches.length === 0) return;
     const edits = g.matches.map((p) => ({ r: p.r, c: p.c, value: this.replaceIn(this.doc.cell(p.r, p.c)) }));
     const n = edits.length;

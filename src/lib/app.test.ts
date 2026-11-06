@@ -35,6 +35,8 @@ afterEach(() => {
 
 beforeEach(() => {
   app.matchCase = false;
+  app.wholeCell = false;
+  app.useRegex = false;
   app.filterRows = false;
   app.replaceWith = '';
   app.grid.inHeader = false;
@@ -51,6 +53,40 @@ describe('replace', () => {
       app.replaceAll();
       expect(column()).toEqual(['$$ $& 5']);
     }
+  });
+
+  it('replaces the matches of a query that was just typed', () => {
+    load('h\nalpha\nbeta\n');
+    app.wholeCell = true;
+    find('alpha');
+    app.replaceWith = 'replacement';
+    app.setQuery('beta');
+    app.replaceAll();
+    expect(column()).toEqual(['alpha', 'replacement']);
+  });
+
+  it('does nothing for a regular expression that was just made invalid', () => {
+    load('h\nalpha\n');
+    app.useRegex = true;
+    find('alpha');
+    app.setQuery('(');
+    expect(() => app.replaceAll()).not.toThrow();
+    expect(() => app.replaceCurrent()).not.toThrow();
+    expect(column()).toEqual(['alpha']);
+  });
+
+  it('moves to the next match instead of replacing a cell an edit stopped matching', () => {
+    load('h\nalpha\nalpha\n');
+    app.wholeCell = true;
+    app.replaceWith = 'x';
+    find('alpha');
+    app.stepMatch(1);
+    app.doc.setCell(0, 0, 'other');
+    app.replaceCurrent();
+    expect(column()).toEqual(['other', 'alpha']);
+    expect(app.grid.anchor).toEqual({ r: 1, c: 0 });
+    app.replaceCurrent();
+    expect(column()).toEqual(['other', 'x']);
   });
 
   it('moves on when the replacement still contains the query', () => {
