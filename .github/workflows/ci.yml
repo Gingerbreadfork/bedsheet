@@ -11,6 +11,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Check the version is the same everywhere
+        run: |
+          v=$(node -p "require('./package.json').version")
+          at_version() { grep -q "$1" "$2" || { echo "$2 is not at version $v"; exit 1; }; }
+          at_version "^version = \"$v\"$" src-tauri/Cargo.toml
+          at_version "\"version\": \"$v\"" src-tauri/tauri.conf.json
+          at_version "<release version=\"$v\"" src-tauri/io.github.gingerbreadfork.bedsheet.metainfo.xml
+          grep -A1 '^name = "bedsheet"$' src-tauri/Cargo.lock | grep -q "^version = \"$v\"$" \
+            || { echo "src-tauri/Cargo.lock is not at version $v"; exit 1; }
       - uses: pnpm/action-setup@v4
         with:
           version: 10
