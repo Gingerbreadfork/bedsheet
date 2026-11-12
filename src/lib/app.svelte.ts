@@ -1,5 +1,5 @@
 import { Doc, insertedAt } from './document.svelte';
-import { GridState, cellKey, DEFAULT_COL_WIDTH, type Pos } from './grid.svelte';
+import { GridState, cellKey, DEFAULT_COL_WIDTH, MIN_COL_WIDTH, MAX_COL_WIDTH, type Pos } from './grid.svelte';
 import { serializeCsv, columnLetter, blockWidth, isLettering, DELIMITERS, delimiterLabel } from './csv';
 import { readClipboard, toHtmlTable, HTML_MAX_CELLS, type ClipBlock } from './clipboard';
 import { looksLikeHeader, clearlyHeader } from './infer';
@@ -1537,9 +1537,15 @@ export class AppState {
     if (!this.shortcutsOpen) this.grid.focusGrid?.();
   }
 
+  /** Changes the zoom, and the column widths with it so they still fit their text. */
   setZoom(z: number): void {
-    this.grid.zoom = Math.round(Math.min(1.6, Math.max(0.7, z)) * 100) / 100;
-    saveSetting('zoom', this.grid.zoom);
+    const zoom = Math.round(Math.min(1.6, Math.max(0.7, z)) * 100) / 100;
+    const scale = zoom / this.grid.zoom;
+    if (scale !== 1) {
+      this.grid.widths = this.grid.widths.map((w) => Math.min(MAX_COL_WIDTH, Math.max(MIN_COL_WIDTH, Math.round(w * scale))));
+    }
+    this.grid.zoom = zoom;
+    saveSetting('zoom', zoom);
   }
 
   // ---------- keyboard ----------

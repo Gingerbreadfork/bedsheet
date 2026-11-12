@@ -551,6 +551,29 @@ describe('column widths', () => {
   });
 });
 
+describe('zoom', () => {
+  afterEach(() => app.setZoom(1));
+
+  it('scales the column widths, within their limits', () => {
+    load('a,b,c\n1,2,3\n');
+    app.grid.widths = [100, 200, 500];
+    app.setZoom(1.5);
+    expect(app.grid.widths).toEqual([150, 300, 560]);
+    app.grid.widths = [150, 300, 60];
+    app.setZoom(1);
+    expect(app.grid.widths).toEqual([100, 200, 48]);
+  });
+
+  it('leaves the widths alone when it is already at its limit', () => {
+    load('a\n1\n');
+    app.setZoom(1.6);
+    app.grid.widths = [100];
+    app.setZoom(1.7);
+    expect(app.grid.zoom).toBe(1.6);
+    expect(app.grid.widths).toEqual([100]);
+  });
+});
+
 describe('undo and redo', () => {
   it('name what they would take back', () => {
     load('h\na\n');
