@@ -7,6 +7,12 @@ describe('numbers', () => {
     for (const s of ['', 'abc', '1,23', '12a', '$', '1.2.3', 'N/A']) expect(isNumeric(s), s).toBe(false);
   });
 
+  it('does not take a code that is only an exponent for a number', () => {
+    for (const s of ['E10', 'e5', '-E250', '$e3%']) expect(isNumeric(s), s).toBe(false);
+    expect(inferColumnType([['E100'], ['E250'], ['E330']], 0)).toBe('text');
+    for (const s of ['1E10', '2.5e-3', '.5e2']) expect(toNumber(s), s).not.toBeNaN();
+  });
+
   it('converts them', () => {
     expect(toNumber('$1,234.50')).toBe(1234.5);
     expect(toNumber('12 %')).toBe(12);

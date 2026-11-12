@@ -1,14 +1,13 @@
 export type ColType = 'number' | 'date' | 'bool' | 'text' | 'empty';
 
-const NUMBER = /^[-+]?[$€£¥]?\s?(?:\d{1,3}(?:,\d{3})+|\d+)?(?:\.\d+)?(?:[eE][-+]?\d+)?\s?%?$/;
-const HAS_DIGIT = /\d/;
+const NUMBER = /^[-+]?[$€£¥]?\s?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?\s?%?$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 const ZONELESS_TIME = /T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
 const SLASH_DATE = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})$/;
 const BOOL = /^(?:true|false|yes|no)$/i;
 
 export function isNumeric(s: string): boolean {
-  return HAS_DIGIT.test(s) && NUMBER.test(s);
+  return NUMBER.test(s);
 }
 
 export function isDate(s: string): boolean {
