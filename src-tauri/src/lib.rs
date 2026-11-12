@@ -181,8 +181,19 @@ fn recovery_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|e| e.to_string())?
         .join("recovery");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    make_private_dir(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
+}
+
+/// Creates `dir` if needed and closes it to other users, since it holds copies of unsaved work.
+fn make_private_dir(dir: &Path) -> io::Result<()> {
+    fs::create_dir_all(dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
 }
 
 /// This instance's name in the recovery directory, and the lock it holds there while it runs.
@@ -660,6 +671,18 @@ mod tests {
             assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
             assert_eq!(fs::read(&path).unwrap(), b"old");
             assert_eq!(leftovers(&dir), 0);
+        }
+
+        #[test]
+        fn closes_the_recovery_directory_to_other_users() {
+            let dir = scratch("recovery-mode").join("recovery");
+            fs::create_dir_all(&dir).unwrap();
+            fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+            make_private_dir(&dir).unwrap();
+            assert_eq!(
+                fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
         }
 
         #[test]
