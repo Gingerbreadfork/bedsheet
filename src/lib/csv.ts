@@ -202,6 +202,7 @@ export function parseCsv(text: string, delimiter: string): ParseResult {
         if (sampling) quoted.push([...quotedRow, false]);
         row.push('');
         rows.push(row);
+        blankTail = 0;
         break;
       }
       continue;

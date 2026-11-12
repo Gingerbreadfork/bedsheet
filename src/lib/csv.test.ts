@@ -26,6 +26,13 @@ describe('parseCsv', () => {
     const r = parseCsv('a\n\nb\n\n\n', ',');
     expect(r.rows).toEqual([['a'], [''], ['b']]);
   });
+  it('keeps a last row of empty fields that follows a blank line', () => {
+    expect(parseCsv('a\n\n,', ',').rows).toEqual([
+      ['a', ''],
+      ['', ''],
+      ['', ''],
+    ]);
+  });
   it('keeps quoted empty records at the end', () => {
     expect(parseCsv('h\nvalue\n""\n', ',').rows).toEqual([['h'], ['value'], ['']]);
     expect(parseCsv('h\n""\n""\n\n', ',').rows).toEqual([['h'], [''], ['']]);
