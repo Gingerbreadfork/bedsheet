@@ -331,7 +331,7 @@ export class Doc {
           }
         },
       },
-      'structure',
+      addRows > 0 || addCols > 0 ? 'structure' : 'cell',
     );
     return { rows: blockRows, cols: blockCols };
   }

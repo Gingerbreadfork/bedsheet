@@ -961,6 +961,23 @@ describe('find options', () => {
     app.wholeCell = false;
   });
 
+  it('keep the search scope and the sort mark through a paste that fits the sheet', () => {
+    load('n,word\n2,pear\n1,fig\n');
+    app.sort('asc', 0);
+    app.grid.selectCols(1, 1);
+    app.toggleScope();
+    app.grid.select(0, 1, false);
+    app.pasteText('plum');
+    expect(column(1)).toEqual(['plum', 'pear']);
+    expect(app.scope?.label).toBe('word');
+    expect(app.grid.sortMark).toEqual({ c: 0, dir: 'asc' });
+    app.grid.select(1, 1, false);
+    app.pasteText('kiwi\nlime');
+    expect(app.doc.rowCount).toBe(3);
+    expect(app.scope).toBeNull();
+    expect(app.grid.sortMark).toBeNull();
+  });
+
   it('matches whole cells only', () => {
     load('h\nann\nanna\nAnn\n');
     app.wholeCell = true;
