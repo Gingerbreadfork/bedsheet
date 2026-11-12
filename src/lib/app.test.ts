@@ -1032,6 +1032,17 @@ describe('find options', () => {
 });
 
 describe('editing commands', () => {
+  it('sorts by the column asked for, wherever the cursor is', () => {
+    load('n,word\n2,pear\n1,fig\n3,apple\n');
+    app.grid.selectCols(0, 1);
+    app.sort('asc', 1);
+    expect(column(1)).toEqual(['apple', 'fig', 'pear']);
+    expect(app.grid.sortMark).toEqual({ c: 1, dir: 'asc' });
+    expect(app.toasts.at(-1)?.text).toBe('Sorted by word, ascending');
+    app.sort('desc');
+    expect(column(0)).toEqual(['3', '2', '1']);
+  });
+
   it('fills right from the first selected column', () => {
     load('a,b,c\n1,,\n2,x,\n');
     app.grid.selectAll();

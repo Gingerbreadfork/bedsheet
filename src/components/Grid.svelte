@@ -602,8 +602,8 @@
   function columnMenu(c: number): MenuItem[] {
     const split = grid.isSplit;
     return [
-      { label: 'Sort ascending', run: () => app.sort('asc') },
-      { label: 'Sort descending', run: () => app.sort('desc') },
+      { label: 'Sort ascending', run: () => app.sort('asc', c) },
+      { label: 'Sort descending', run: () => app.sort('desc', c) },
       'sep',
       { label: 'Rename column', run: () => (grid.editingHeader = c) },
       ...(doc.hasHeader ? [] : [{ label: 'Use first row as header', run: () => app.toggleHeader() }]),

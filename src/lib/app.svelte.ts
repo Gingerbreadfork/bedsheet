@@ -1139,10 +1139,10 @@ export class AppState {
     this.toast(cols.length === 1 ? 'Deleted column' : `Deleted ${cols.length} columns`);
   }
 
-  sort(dir: 'asc' | 'desc'): void {
+  /** Sorts the rows by column `c`, which is the cursor's column unless one is given. */
+  sort(dir: 'asc' | 'desc', c = this.grid.anchor.c): void {
     if (!this.doc.loaded || this.doc.rowCount < 2) return;
     this.commitPending();
-    const c = this.grid.anchor.c;
     this.doc.sortBy(c, dir);
     this.grid.sortMark = { c, dir };
     this.toast(`Sorted by ${this.doc.columnLabel(c)}, ${dir === 'asc' ? 'ascending' : 'descending'}`);
