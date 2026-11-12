@@ -9,6 +9,17 @@ function load(text: string): Doc {
 
 const column = (d: Doc, c = 0): string[] => d.rows.map((r) => r[c]);
 
+describe('close', () => {
+  it('lets go of the rows and columns', () => {
+    const d = load('a,b\n1,2\n');
+    d.close();
+    expect(d.loaded).toBe(false);
+    expect(d.rowCount).toBe(0);
+    expect(d.colCount).toBe(0);
+    expect(d.dirty).toBe(false);
+  });
+});
+
 describe('sortBy', () => {
   it('sorts numbers and keeps stray text after them', () => {
     const values = Array.from({ length: 40 }, (_, i) => String(((i * 17) % 40) + 1));

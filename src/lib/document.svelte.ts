@@ -191,8 +191,11 @@ export class Doc {
     return true;
   }
 
+  /** Empties the document, letting go of its rows so a large file's memory is freed. */
   close(): void {
     this.reset();
+    this.columns = [];
+    this.rows = [];
     this.loaded = false;
     this.touch('load');
   }
