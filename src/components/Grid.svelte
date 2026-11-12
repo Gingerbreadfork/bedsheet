@@ -677,7 +677,7 @@
   function takeProxyText(): void {
     const text = proxy?.value ?? '';
     if (proxy) proxy.value = '';
-    if (text === '' || app.menu || grid.editing || grid.editingHeader !== null) return;
+    if (text === '' || app.menu || app.shortcutsOpen || grid.editing || grid.editingHeader !== null) return;
     if (grid.inHeader) {
       grid.headerDraft = text;
       grid.editingHeader = grid.anchor.c;
@@ -688,7 +688,7 @@
 
   function onKeyDown(e: KeyboardEvent): void {
     if (isComposing(e)) return;
-    if (app.menu || grid.editing || grid.editingHeader !== null) return;
+    if (app.menu || app.shortcutsOpen || grid.editing || grid.editingHeader !== null) return;
     if (colCount === 0) return;
     if (grid.inHeader) {
       if (onHeaderNavKey(e)) {

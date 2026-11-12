@@ -1532,6 +1532,11 @@ export class AppState {
     this.grid.widths = [];
   }
 
+  toggleShortcuts(): void {
+    this.shortcutsOpen = !this.shortcutsOpen;
+    if (!this.shortcutsOpen) this.grid.focusGrid?.();
+  }
+
   setZoom(z: number): void {
     this.grid.zoom = Math.round(Math.min(1.6, Math.max(0.7, z)) * 100) / 100;
     saveSetting('zoom', this.grid.zoom);
@@ -1541,13 +1546,16 @@ export class AppState {
 
   handleKeydown(e: KeyboardEvent): boolean {
     const editable = isEditableTarget(e.target);
-    if (!this.doc.loaded && !this.busy && !editable && eventMatches(e, PASTE_KEY)) {
+    // The shortcuts sheet covers the grid, so only the key that closes it works while it is open.
+    const covered = this.shortcutsOpen;
+    if (!covered && !this.doc.loaded && !this.busy && !editable && eventMatches(e, PASTE_KEY)) {
       e.preventDefault();
       void this.paste();
       return true;
     }
     for (const { s, cmd } of this.bindings) {
       if (!eventMatches(e, s)) continue;
+      if (covered && cmd.id !== 'help.shortcuts') continue;
       if (editable && !cmd.global) continue;
       if (cmd.when && !cmd.when()) continue;
       e.preventDefault();
@@ -1638,7 +1646,7 @@ export class AppState {
       { id: 'view.themeDark', title: 'Theme: dark', group: 'View', when: () => this.theme !== 'dark', run: () => this.setTheme('dark') },
 
       { id: 'help.palette', title: 'Command palette', group: 'Help', shortcut: 'Ctrl+K', altShortcuts: ['Ctrl+Shift+P'], global: true, run: () => (this.paletteOpen = !this.paletteOpen) },
-      { id: 'help.shortcuts', title: 'Keyboard shortcuts', group: 'Help', shortcut: 'Ctrl+/', global: true, run: () => (this.shortcutsOpen = true) },
+      { id: 'help.shortcuts', title: 'Keyboard shortcuts', group: 'Help', shortcut: 'Ctrl+/', global: true, run: () => this.toggleShortcuts() },
     ];
   }
 }

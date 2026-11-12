@@ -40,7 +40,7 @@
       <h2>Keyboard shortcuts</h2>
       <button class="icon-btn" onclick={close} title="Close (Esc)"><Icon name="close" /></button>
     </div>
-    <div class="cols">
+    <div class="cols" tabindex="-1" {@attach (list) => list.focus()}>
       <section>
         <h3>Navigating the grid</h3>
         {#each NAV as it (it.title)}
@@ -114,6 +114,7 @@
     column-gap: 32px;
     padding: 12px 22px 20px;
     overflow-y: auto;
+    outline: none;
   }
   section {
     break-inside: avoid;
