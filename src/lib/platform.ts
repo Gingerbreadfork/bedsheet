@@ -54,12 +54,9 @@ export async function readPath(path: string): Promise<OpenedFile> {
   return { name: baseName(path), path, bytes: new Uint8Array(buf), stamp };
 }
 
-export async function pickFile(): Promise<OpenedFile | null> {
-  if (isTauri) {
-    const chosen = await openDialog({ multiple: false, directory: false, filters: FILTERS });
-    if (!chosen) return null;
-    return readPath(chosen);
-  }
+/** Asks for a file to open. Gives its path in the app, and its contents in a browser, which has no paths. */
+export async function pickFile(): Promise<string | OpenedFile | null> {
+  if (isTauri) return (await openDialog({ multiple: false, directory: false, filters: FILTERS })) ?? null;
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';

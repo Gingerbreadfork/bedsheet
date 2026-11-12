@@ -1,13 +1,19 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { app } from './app.svelte';
-import { clipboard, fileStamp, recovery, saveBytes } from './platform';
+import { clipboard, fileStamp, pickFile, readPath, recovery, saveBytes } from './platform';
 import { toHtmlTable } from './clipboard';
 import { baseName } from './paths';
 
 vi.mock('./platform', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./platform')>();
-  return { ...actual, saveBytes: vi.fn(actual.saveBytes), fileStamp: vi.fn(actual.fileStamp) };
+  return {
+    ...actual,
+    saveBytes: vi.fn(actual.saveBytes),
+    fileStamp: vi.fn(actual.fileStamp),
+    pickFile: vi.fn(actual.pickFile),
+    readPath: vi.fn(actual.readPath),
+  };
 });
 
 vi.stubGlobal('requestAnimationFrame', (fn: () => void) => setTimeout(fn, 0));
@@ -194,6 +200,28 @@ describe('opening something else', () => {
     await app.newSheet();
     expect(app.query).toBe('');
     expect(app.grid.rowCount).toBe(30);
+  });
+
+  it('says why a file picked in the open dialog could not be read', async () => {
+    load('h\na\n');
+    vi.mocked(pickFile).mockResolvedValueOnce('/tmp/locked.csv');
+    vi.mocked(readPath).mockRejectedValueOnce('Permission denied (os error 13)');
+    await app.open();
+    expect(app.toasts.at(-1)?.text).toBe('Couldn’t open locked.csv: Permission denied (os error 13)');
+    expect(app.doc.name).toBe('t.csv');
+  });
+
+  it('warns before reading a very large file picked in the open dialog', async () => {
+    load('h\na\n');
+    vi.mocked(pickFile).mockResolvedValueOnce('/tmp/big.csv');
+    vi.mocked(fileStamp).mockResolvedValueOnce({ size: 2 ** 30, modified: 1 });
+    const opening = app.open();
+    await settle();
+    expect(app.dialog?.title).toBe('big.csv is 1.0 GB');
+    app.dialog!.actions.find((a) => a.label === 'Cancel')!.run();
+    await opening;
+    expect(vi.mocked(readPath)).not.toHaveBeenCalledWith('/tmp/big.csv');
+    expect(app.doc.name).toBe('t.csv');
   });
 });
 

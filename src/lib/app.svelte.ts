@@ -437,8 +437,9 @@ export class AppState {
 
   async open(): Promise<void> {
     if (!(await this.confirmDiscard())) return;
-    const file = await pickFile();
-    if (file) await this.loadFile(file);
+    const picked = await pickFile();
+    if (typeof picked === 'string') await this.openPath(picked, false);
+    else if (picked) await this.loadFile(picked);
   }
 
   async openPath(path: string, confirm = true): Promise<void> {
