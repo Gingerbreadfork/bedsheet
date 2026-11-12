@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { app } from './app.svelte';
-import { clipboard, fileStamp, pickFile, readPath, recovery, saveBytes } from './platform';
+import { clipboard, fileStamp, pickFile, readPath, recovery, saveBytes, type OpenedFile } from './platform';
 import { toHtmlTable } from './clipboard';
 import { baseName } from './paths';
 
@@ -222,6 +222,57 @@ describe('opening something else', () => {
     await opening;
     expect(vi.mocked(readPath)).not.toHaveBeenCalledWith('/tmp/big.csv');
     expect(app.doc.name).toBe('t.csv');
+  });
+
+  /** Holds the next file read open until `arrive` is called with its contents. */
+  function holdRead(): { arrive: (text: string) => void } {
+    let arrive: (file: OpenedFile) => void = () => {};
+    vi.mocked(readPath).mockImplementationOnce((path) => new Promise((resolve) => (arrive = resolve)).then((f) => ({ ...(f as OpenedFile), path })));
+    return { arrive: (text) => arrive({ name: 'other.csv', path: null, bytes: new TextEncoder().encode(text) }) };
+  }
+
+  it('shows that a file is being read', async () => {
+    load('h\na\n');
+    const read = holdRead();
+    const opening = app.openPath('/tmp/other.csv');
+    await settle();
+    expect(app.busy).toBe('Opening other.csv');
+    read.arrive('x\n1\n');
+    await opening;
+    expect(app.busy).toBeNull();
+    expect(app.doc.name).toBe('other.csv');
+    expect(column()).toEqual(['1']);
+  });
+
+  it('asks before replacing edits made while the file was being read', async () => {
+    load('h\na\n');
+    const read = holdRead();
+    const opening = app.openPath('/tmp/other.csv');
+    await settle();
+    app.doc.setCell(0, 0, 'typed');
+    read.arrive('x\n1\n');
+    await vi.waitFor(() => expect(app.dialog?.title).toBe('Save changes to t.csv?'));
+    app.dialog!.actions.find((a) => a.label === 'Cancel')!.run();
+    await opening;
+    expect(app.doc.name).toBe('t.csv');
+    expect(column()).toEqual(['typed']);
+    expect(app.busy).toBeNull();
+  });
+
+  it('counts a cell still being edited when the file arrives', async () => {
+    load('h\na\n');
+    const read = holdRead();
+    const opening = app.openPath('/tmp/other.csv');
+    await settle();
+    app.commitEdit = () => {
+      app.doc.setCell(0, 0, 'typing');
+      app.commitEdit = null;
+    };
+    read.arrive('x\n1\n');
+    await vi.waitFor(() => expect(app.dialog?.title).toBe('Save changes to t.csv?'));
+    app.dialog!.actions.find((a) => a.label === 'Don’t save')!.run();
+    await opening;
+    expect(app.doc.name).toBe('other.csv');
   });
 });
 

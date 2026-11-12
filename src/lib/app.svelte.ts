@@ -437,13 +437,18 @@ export class AppState {
 
   async open(): Promise<void> {
     if (!(await this.confirmDiscard())) return;
+    const asked = this.doc.rev;
     const picked = await pickFile();
-    if (typeof picked === 'string') await this.openPath(picked, false);
-    else if (picked) await this.loadFile(picked);
+    if (typeof picked === 'string') await this.openPath(picked, asked);
+    else if (picked) await this.loadFile(picked, asked);
   }
 
-  async openPath(path: string, confirm = true): Promise<void> {
-    if (confirm && !(await this.confirmDiscard())) return;
+  /** Opens the file at `path`. `asked` is the revision the user has agreed to replace; without it they are asked first. */
+  async openPath(path: string, asked?: number): Promise<void> {
+    if (asked === undefined) {
+      if (!(await this.confirmDiscard())) return;
+      asked = this.doc.rev;
+    }
     const size = (await fileStamp(path))?.size ?? 0;
     if (size > LARGE_FILE_BYTES) {
       const open = await this.choose(
@@ -456,20 +461,25 @@ export class AppState {
       );
       if (!open) return;
     }
+    this.busy = `Opening ${baseName(path)}`;
     try {
       const file = await readPath(path);
-      await this.loadFile(file);
+      await this.loadFile(file, asked);
     } catch (e) {
       if (/os error 2\b/.test(String(e))) this.recent = removeRecent(path);
       this.toast(`Couldn’t open ${baseName(path)}: ${String(e)}`, 'error', 4000);
+    } finally {
+      this.busy = null;
     }
   }
 
-  async loadFile(file: OpenedFile): Promise<void> {
-    this.commitPending();
+  /** Replaces the sheet with `file`. Asks first if the sheet has changed since revision `asked`, when replacing it was agreed. */
+  async loadFile(file: OpenedFile, asked = this.doc.rev): Promise<void> {
     this.busy = `Opening ${file.name}`;
     await nextFrame();
     try {
+      this.commitPending();
+      if (this.doc.rev !== asked && !(await this.confirmDiscard())) return;
       const { text, encoding } = decodeBytes(file.bytes);
       this.resetFind();
       this.doc.loadText(text, { name: file.name, path: file.path, encoding });
@@ -585,11 +595,12 @@ export class AppState {
       this.toast(`${this.doc.name} has changed on disk. Saving will ask before overwriting it.`, 'info', 6000);
       return;
     }
+    const rev = this.doc.rev;
     const reload = await this.choose(`${this.doc.name} has changed on disk`, 'Reload it to see the new contents?', [
       { label: 'Keep this version', value: false },
       { label: 'Reload', kind: 'primary', value: true },
     ]);
-    if (reload) await this.openPath(path, false);
+    if (reload && path === this.doc.path) await this.openPath(path, rev);
   }
 
   async closeFile(): Promise<void> {
@@ -617,7 +628,8 @@ export class AppState {
     const f = files[0];
     if (!f) return;
     if (!(await this.confirmDiscard())) return;
-    await this.loadFile({ name: f.name, path: null, bytes: new Uint8Array(await f.arrayBuffer()) });
+    const asked = this.doc.rev;
+    await this.loadFile({ name: f.name, path: null, bytes: new Uint8Array(await f.arrayBuffer()) }, asked);
   }
 
   // ---------- editing ----------
