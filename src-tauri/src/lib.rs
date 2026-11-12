@@ -199,20 +199,42 @@ fn recovery_owner(dir: &Path) -> Result<String, String> {
     if let Some((name, _)) = owner.as_ref() {
         return Ok(name.clone());
     }
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let name = format!("{:x}{nanos:x}", std::process::id());
-    let lock = File::create(lock_file(dir, &name)).map_err(|e| e.to_string())?;
-    lock.try_lock().map_err(|e| e.to_string())?;
-    *owner = Some((name.clone(), lock));
-    Ok(name)
+    for _ in 0..3 {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let name = format!("{:x}{nanos:x}", std::process::id());
+        let path = lock_file(dir, &name);
+        let lock = File::create(&path).map_err(|e| e.to_string())?;
+        if holds_lock_file(&lock, &path) {
+            *owner = Some((name.clone(), lock));
+            return Ok(name);
+        }
+    }
+    Err("could not lock the recovery directory".into())
+}
+
+/// Locks a lock file that was just made. False when another instance, taking the unlocked file for
+/// a dead one's, holds it or has already removed it.
+fn holds_lock_file(lock: &File, path: &Path) -> bool {
+    lock.try_lock().is_ok() && path.exists()
 }
 
 /// An owner without a lock file, or whose lock is free, has exited.
 fn owner_is_running(dir: &Path, owner: &str) -> bool {
     File::open(lock_file(dir, owner)).is_ok_and(|file| file.try_lock().is_err())
+}
+
+/// Removes the lock file of an owner that has exited. The lock is held while the file goes, so an
+/// instance that had only just made it finds out and makes another.
+fn remove_dead_lock(dir: &Path, owner: &str) {
+    let path = lock_file(dir, owner);
+    if let Ok(file) = File::open(&path) {
+        if file.try_lock().is_ok() {
+            let _ = fs::remove_file(&path);
+        }
+    }
 }
 
 /// Snapshots are named `<owner>-<id>.json` so a later launch can tell whether their owner is still running.
@@ -232,8 +254,8 @@ fn claim_recovery_files(dir: &Path, own: &str) -> Vec<RecoveryEntry> {
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if let Some(owner) = name.strip_suffix(".lock") {
-            if owner != own && !owner_is_running(dir, owner) {
-                let _ = fs::remove_file(entry.path());
+            if owner != own {
+                remove_dead_lock(dir, owner);
             }
             continue;
         }
@@ -531,6 +553,26 @@ mod tests {
         assert!(owner_is_running(&dir, &own));
         assert_eq!(recovery_owner(&dir).unwrap(), own);
         assert!(!owner_is_running(&dir, "missing"));
+    }
+
+    #[test]
+    fn notices_when_its_new_lock_file_was_taken_for_a_dead_one() {
+        let dir = scratch("lock-race");
+        let path = lock_file(&dir, "starting");
+        let lock = File::create(&path).unwrap();
+        remove_dead_lock(&dir, "starting");
+        assert!(!path.exists());
+        assert!(!holds_lock_file(&lock, &path));
+
+        let path = lock_file(&dir, "probed");
+        let lock = File::create(&path).unwrap();
+        let probe = File::open(&path).unwrap();
+        probe.try_lock().unwrap();
+        assert!(!holds_lock_file(&lock, &path));
+        drop(probe);
+        assert!(holds_lock_file(&lock, &path));
+        remove_dead_lock(&dir, "probed");
+        assert!(path.exists());
     }
 
     #[test]
