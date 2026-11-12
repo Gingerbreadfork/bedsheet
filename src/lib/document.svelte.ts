@@ -1,4 +1,4 @@
-import { parseCsv, serializeCsv, detectDelimiter, columnLetter, blockWidth, MINIMAL_QUOTING, type LineEnding, type Quoting } from './csv';
+import { parseCsv, serializeCsv, serializeCsvInSlices, detectDelimiter, columnLetter, blockWidth, MINIMAL_QUOTING, type LineEnding, type Quoting } from './csv';
 import { inferColumnType, toNumber, toTimestamp, detectDateOrder, looksLikeHeader } from './infer';
 
 export interface Command {
@@ -203,6 +203,17 @@ export class Doc {
   toText(): string {
     const all = this.hasHeader ? [this.columns, ...this.rows] : this.rows;
     return serializeCsv(all, this.delimiter, this.lineEnding, { quoting: this.quoting, finalNewline: this.finalNewline });
+  }
+
+  /** `toText` without holding up the page, pausing with `pause` along the way. Null if the document changed meanwhile. */
+  toTextInSlices(pause: () => Promise<void>): Promise<string | null> {
+    const rev = this.rev;
+    const all = this.hasHeader ? [this.columns, ...this.rows] : this.rows;
+    const unchanged = async (): Promise<boolean> => {
+      await pause();
+      return this.rev === rev;
+    };
+    return serializeCsvInSlices(all, this.delimiter, this.lineEnding, { quoting: this.quoting, finalNewline: this.finalNewline }, unchanged);
   }
 
   /** Marks freshly loaded contents as not matching what is on disk. */

@@ -265,19 +265,15 @@ export class AppState {
     this.recoveryTimer = setTimeout(() => void this.writeRecovery(), RECOVERY_IDLE_MS);
   }
 
+  /** Writes the snapshot a little at a time, and gives up if the sheet is edited or saved before it is ready. */
   private async writeRecovery(): Promise<void> {
     const { doc } = this;
     try {
       if (!doc.loaded || !doc.dirty) return await recovery.clear(this.recoveryId);
-      await recovery.save(this.recoveryId, {
-        name: doc.name,
-        path: doc.path,
-        encoding: doc.encoding,
-        delimiter: doc.delimiter,
-        hasHeader: doc.hasHeader,
-        savedAt: Date.now(),
-        text: doc.toText(),
-      });
+      const { name, path, encoding, delimiter, hasHeader } = doc;
+      const text = await doc.toTextInSlices(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      if (text === null || !doc.dirty) return;
+      await recovery.save(this.recoveryId, { name, path, encoding, delimiter, hasHeader, savedAt: Date.now(), text });
     } catch {
       /* recovery is best effort */
     }

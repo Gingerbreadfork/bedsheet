@@ -282,22 +282,67 @@ export interface SerializeOptions {
   quoteEmptyTail?: boolean;
 }
 
-export function serializeCsv(
-  rows: Iterable<readonly string[]>,
+/**
+ * Collects rows as lines of text, and joins them into the file's contents at the end. `settle` joins
+ * the lines so far early, keeping back blank ones that may still turn out to end the file.
+ */
+function lineWriter(
   delimiter: string,
-  lineEnding: LineEnding = '\n',
-  { quoting = MINIMAL_QUOTING, finalNewline = true, quoteEmptyTail = true }: SerializeOptions = {},
-): string {
-  const lines: string[] = [];
+  lineEnding: LineEnding,
+  { quoting = MINIMAL_QUOTING, finalNewline = true, quoteEmptyTail = true }: SerializeOptions,
+): { add(row: readonly string[]): void; settle(): void; text(): string } {
+  const settled: string[] = [];
+  let lines: string[] = [];
   let blankTail = 0;
-  for (const r of rows) {
-    const line = serializeRow(r, delimiter, quoting);
-    blankTail = quoteEmptyTail && line === '' && r.length === 1 ? blankTail + 1 : 0;
-    lines.push(line);
+  return {
+    add(row) {
+      const line = serializeRow(row, delimiter, quoting);
+      blankTail = quoteEmptyTail && line === '' && row.length === 1 ? blankTail + 1 : 0;
+      lines.push(line);
+    },
+    settle() {
+      const held = lines.splice(lines.length - blankTail);
+      if (lines.length > 0) settled.push(lines.join(lineEnding));
+      lines = held;
+    },
+    text() {
+      if (settled.length === 0 && lines.length === 0) return '';
+      for (let i = lines.length - blankTail; i < lines.length; i++) lines[i] = '""';
+      return [...settled, ...lines].join(lineEnding) + (finalNewline ? lineEnding : '');
+    },
+  };
+}
+
+export function serializeCsv(rows: Iterable<readonly string[]>, delimiter: string, lineEnding: LineEnding = '\n', options: SerializeOptions = {}): string {
+  const out = lineWriter(delimiter, lineEnding, options);
+  for (const row of rows) out.add(row);
+  return out.text();
+}
+
+/**
+ * `serializeCsv` in short bursts of at most `sliceMs`, so a large sheet doesn't hold up the page.
+ * After each burst it waits for `proceed`, which must answer false if the rows have changed; the
+ * result is then null.
+ */
+export async function serializeCsvInSlices(
+  rows: readonly (readonly string[])[],
+  delimiter: string,
+  lineEnding: LineEnding,
+  options: SerializeOptions,
+  proceed: () => Promise<boolean>,
+  sliceMs = 8,
+): Promise<string | null> {
+  const out = lineWriter(delimiter, lineEnding, options);
+  let until = performance.now() + sliceMs;
+  for (let i = 0; i < rows.length; i++) {
+    out.add(rows[i]);
+    if ((i & 255) === 255 && performance.now() >= until) {
+      out.settle();
+      if (!(await proceed())) return null;
+      until = performance.now() + sliceMs;
+    }
   }
-  if (lines.length === 0) return '';
-  for (let i = lines.length - blankTail; i < lines.length; i++) lines[i] = '""';
-  return lines.join(lineEnding) + (finalNewline ? lineEnding : '');
+  return out.text();
 }
 
 /** Parses tab-separated clipboard text into a block; falls back to lines, then a single value. */

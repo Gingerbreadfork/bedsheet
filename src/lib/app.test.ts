@@ -402,6 +402,43 @@ describe('crash recovery', () => {
     return { clear };
   }
 
+  it('sets unsaved work aside once editing pauses', async () => {
+    vi.useFakeTimers();
+    try {
+      const save = vi.spyOn(recovery, 'save').mockResolvedValue();
+      load('h\na\n');
+      app.doc.setCell(0, 0, 'b');
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(save).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(save).toHaveBeenCalledOnce();
+      expect(save.mock.lastCall![1]).toMatchObject({ name: 't.csv', path: '/tmp/t.csv', hasHeader: true, text: 'h\nb\n' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops a snapshot that a save or a later edit overtook', async () => {
+    vi.useFakeTimers();
+    try {
+      const save = vi.spyOn(recovery, 'save').mockResolvedValue();
+      load('h\na\n');
+      app.doc.setCell(0, 0, 'b');
+      vi.spyOn(app.doc, 'toTextInSlices').mockImplementationOnce(async () => {
+        app.doc.markSaved('/tmp/t.csv', 't.csv');
+        return 'h\nb\n';
+      });
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(save).not.toHaveBeenCalled();
+      app.doc.setCell(0, 0, 'c');
+      vi.spyOn(app.doc, 'toTextInSlices').mockImplementationOnce(async () => null);
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(save).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the snapshot for next time when the prompt is dismissed with Escape', async () => {
     const { clear } = offer();
     await settle();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCsv, serializeCsv, detectDelimiter, parseClipboardBlock, columnLetter, columnIndex, isLettering } from './csv';
+import { parseCsv, serializeCsv, serializeCsvInSlices, detectDelimiter, parseClipboardBlock, columnLetter, columnIndex, isLettering } from './csv';
 
 describe('parseCsv', () => {
   it('parses simple rows', () => {
@@ -157,5 +157,36 @@ describe('column letters', () => {
     expect(isLettering(['A', 'C'])).toBe(false);
     expect(isLettering(['ID', 'Name'])).toBe(false);
     expect(isLettering([])).toBe(false);
+  });
+});
+
+describe('serializeCsvInSlices', () => {
+  const rows = [...Array.from({ length: 1000 }, (_, i) => [String(i), i % 7 === 0 ? `say "hi", ${i}` : `v${i}`, '']), [''], ['']];
+  const variants = [
+    {},
+    { finalNewline: false },
+    { quoting: { style: 'all', empty: true } as const },
+    { quoteEmptyTail: false },
+  ];
+
+  it('gives the same text as serializing in one go', async () => {
+    for (const options of variants) {
+      let pauses = 0;
+      const text = await serializeCsvInSlices(rows, ';', '\r\n', options, async () => ++pauses > 0, 0);
+      expect(text).toBe(serializeCsv(rows, ';', '\r\n', options));
+      expect(pauses).toBeGreaterThan(1);
+    }
+    expect(await serializeCsvInSlices([], ',', '\n', {}, async () => true)).toBe('');
+  });
+
+  it('quotes a tail of empty rows that spans several bursts', async () => {
+    const tailed = [['a'], [''], ['b'], ...Array.from({ length: 700 }, () => [''])];
+    const text = await serializeCsvInSlices(tailed, ',', '\n', {}, async () => true, 0);
+    expect(text).toBe(serializeCsv(tailed, ',', '\n'));
+    expect(parseCsv(text!, ',').rows).toHaveLength(703);
+  });
+
+  it('gives up when told the rows have changed', async () => {
+    expect(await serializeCsvInSlices(rows, ',', '\n', {}, async () => false, 0)).toBeNull();
   });
 });

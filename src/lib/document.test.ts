@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Doc } from './document.svelte';
 
 function load(text: string): Doc {
@@ -8,6 +8,35 @@ function load(text: string): Doc {
 }
 
 const column = (d: Doc, c = 0): string[] => d.rows.map((r) => r[c]);
+
+describe('toTextInSlices', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** Makes every look at the clock find a slice used up, so the work pauses as often as it can. */
+  function slowClock(): void {
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => (now += 100));
+  }
+
+  it('matches toText, pausing along the way', async () => {
+    slowClock();
+    const d = load(`name,note\n${'ann,"a, b"\n'.repeat(2000)}`);
+    const pause = vi.fn(async () => {});
+    expect(await d.toTextInSlices(pause)).toBe(d.toText());
+    expect(pause.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('gives up when the document is edited during a pause', async () => {
+    slowClock();
+    const d = load(`name\n${'ann\n'.repeat(2000)}`);
+    let edited = false;
+    const text = await d.toTextInSlices(async () => {
+      if (!edited) d.setCell(1500, 0, 'bob');
+      edited = true;
+    });
+    expect(text).toBeNull();
+  });
+});
 
 describe('close', () => {
   it('lets go of the rows and columns', () => {
