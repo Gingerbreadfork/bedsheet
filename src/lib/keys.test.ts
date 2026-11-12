@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseShortcut, eventMatches, shortcutKeys } from './keys';
+import { parseShortcut, eventMatches, shortcutKeys, isComposing } from './keys';
 
 const press = (key: string, mods: Partial<KeyboardEvent> = {}): KeyboardEvent =>
   ({ key, code: '', ctrlKey: false, shiftKey: false, altKey: false, ...mods }) as KeyboardEvent;
@@ -21,6 +21,14 @@ describe('eventMatches', () => {
 
   it('tells Delete from Shift+Delete', () => {
     expect(eventMatches(press('Delete', { shiftKey: true }), parseShortcut('Delete'))).toBe(false);
+  });
+});
+
+describe('isComposing', () => {
+  it('spots keys an input method is still using', () => {
+    expect(isComposing(press('Enter', { isComposing: true }))).toBe(true);
+    expect(isComposing(press('Process', { keyCode: 229 }))).toBe(true);
+    expect(isComposing(press('Enter', { isComposing: false, keyCode: 13 }))).toBe(false);
   });
 });
 

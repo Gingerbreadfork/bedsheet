@@ -3,6 +3,7 @@
   import './styles/app.css';
   import { app } from './lib/app.svelte';
   import { isTauri, isWindows, win, onFileDrop } from './lib/platform';
+  import { isComposing } from './lib/keys';
   import HeaderBar from './components/HeaderBar.svelte';
   import FindBar from './components/FindBar.svelte';
   import Grid from './components/Grid.svelte';
@@ -68,7 +69,7 @@
   }
 
   function onKeydown(e: KeyboardEvent): void {
-    if (app.dialog) return;
+    if (app.dialog || isComposing(e)) return;
     if (e.key === 'Escape' && app.closeOverlays()) {
       e.preventDefault();
       app.grid.focusGrid?.();

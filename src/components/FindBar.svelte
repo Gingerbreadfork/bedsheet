@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
+  import { isComposing } from '../lib/keys';
   import Icon from './Icon.svelte';
 
   const { grid } = app;
@@ -37,6 +38,7 @@
   });
 
   function onFindKey(e: KeyboardEvent): void {
+    if (isComposing(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       app.stepMatch(e.shiftKey ? -1 : 1);
@@ -47,6 +49,7 @@
   }
 
   function onReplaceKey(e: KeyboardEvent): void {
+    if (isComposing(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       if (e.ctrlKey) app.replaceAll();

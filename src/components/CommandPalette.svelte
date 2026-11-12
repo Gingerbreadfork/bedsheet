@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { app, GROUPS, type CommandDef } from '../lib/app.svelte';
-  import { shortcutKeys } from '../lib/keys';
+  import { shortcutKeys, isComposing } from '../lib/keys';
   import Icon from './Icon.svelte';
 
   let query = $state('');
@@ -79,6 +79,7 @@
   }
 
   function onKey(e: KeyboardEvent): void {
+    if (isComposing(e)) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       void moveIndex(1);

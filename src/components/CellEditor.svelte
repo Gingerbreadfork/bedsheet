@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
   import { app } from '../lib/app.svelte';
+  import { isComposing } from '../lib/keys';
   import type { EditState } from '../lib/grid.svelte';
 
   let {
@@ -57,6 +58,7 @@
   });
 
   function onKey(e: KeyboardEvent): void {
+    if (isComposing(e)) return;
     const replaceMode = edit.mode === 'replace';
     switch (e.key) {
       case 'Enter':

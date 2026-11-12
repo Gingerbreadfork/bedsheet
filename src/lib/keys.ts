@@ -67,6 +67,11 @@ export function shortcutKeys(combo: string): string[] {
   return keys;
 }
 
+/** Whether the key is going to an input method that is still composing text, and so isn't a command. */
+export function isComposing(e: KeyboardEvent): boolean {
+  return e.isComposing || e.keyCode === 229;
+}
+
 export function isEditableTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement) || 'gridProxy' in t.dataset) return false;
   const tag = t.tagName;

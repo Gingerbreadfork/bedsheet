@@ -2,6 +2,7 @@
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { app, type MenuItem } from '../lib/app.svelte';
   import { cellKey, MIN_COL_WIDTH, MAX_COL_WIDTH, DEFAULT_COL_WIDTH, type Pos } from '../lib/grid.svelte';
+  import { isComposing } from '../lib/keys';
   import { inferAllColumnTypes } from '../lib/infer';
   import { columnLetter } from '../lib/csv';
   import CellEditor from './CellEditor.svelte';
@@ -686,7 +687,7 @@
   }
 
   function onKeyDown(e: KeyboardEvent): void {
-    if (e.isComposing || e.keyCode === 229) return;
+    if (isComposing(e)) return;
     if (app.menu || grid.editing || grid.editingHeader !== null) return;
     if (colCount === 0) return;
     if (grid.inHeader) {
@@ -816,6 +817,7 @@
     focusGrid();
   }
   function onHeaderKey(e: KeyboardEvent): void {
+    if (isComposing(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       e.stopPropagation();

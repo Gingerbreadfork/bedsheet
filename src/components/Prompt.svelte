@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
+  import { isComposing } from '../lib/keys';
 
   let input = $state<HTMLInputElement>();
   let prompt = $derived(app.prompt);
@@ -18,6 +19,7 @@
   }
 
   function onKey(e: KeyboardEvent): void {
+    if (isComposing(e)) return;
     e.stopPropagation();
     if (e.key === 'Enter') {
       e.preventDefault();
