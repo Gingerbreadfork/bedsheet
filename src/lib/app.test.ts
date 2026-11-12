@@ -390,6 +390,36 @@ describe('saving', () => {
     expect(await two).toBe(true);
     expect(app.doc.dirty).toBe(false);
   });
+
+  it('is left to finish before asking whether to save the same edits', async () => {
+    load('h\na\n');
+    app.doc.setCell(0, 0, 'b');
+    const hold = holdSave();
+    const saved = app.save(false);
+    await hold.started;
+    const asked = app.confirmDiscard();
+    await settle();
+    expect(app.dialog).toBeNull();
+    hold.finish('/tmp/t.csv');
+    expect(await saved).toBe(true);
+    expect(await asked).toBe(true);
+    expect(app.dialog).toBeNull();
+  });
+
+  it('holds the window open until the write is done', async () => {
+    load('h\na\n');
+    const hold = holdSave();
+    const saved = app.save(false);
+    await hold.started;
+    let closed = false;
+    const closing = app.quit().then(() => (closed = true));
+    await settle();
+    expect(closed).toBe(false);
+    hold.finish('/tmp/t.csv');
+    await saved;
+    await closing;
+    expect(closed).toBe(true);
+  });
 });
 
 describe('column widths', () => {

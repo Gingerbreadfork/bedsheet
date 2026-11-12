@@ -178,6 +178,7 @@ export class AppState {
   private recoveryId = Math.random().toString(36).slice(2, 12);
   private recoveryTimer: ReturnType<typeof setTimeout> | undefined;
   private saving: Promise<unknown> = Promise.resolve();
+  private activeSaves = 0;
   private waitingDialogs: (() => void)[] = [];
 
   constructor() {
@@ -405,13 +406,18 @@ export class AppState {
   }
 
   /**
-   * Asks before throwing away unsaved work, counting an edit still open in a cell or header.
-   * Refuses while another question is on screen, and asks again if the sheet changed during the save.
+   * Asks before throwing away unsaved work, counting an edit still open in a cell or header. A save
+   * under way is left to finish first. Refuses while another question is on screen, and asks again
+   * if the sheet changed during the save.
    */
   async confirmDiscard(): Promise<boolean> {
     for (;;) {
       this.commitPending();
       if (!this.doc.dirty) return true;
+      if (this.activeSaves > 0) {
+        await this.saving;
+        continue;
+      }
       if (this.dialog) return false;
       const choice = await this.choose<'discard' | 'cancel' | 'save'>(
         `Save changes to ${this.doc.name}?`,
@@ -507,7 +513,12 @@ export class AppState {
     this.commitPending();
     const generation = this.doc.generation;
     const run = this.saving.then(() => this.writeFile(forcePrompt, generation));
-    this.saving = run.catch(() => false);
+    this.activeSaves++;
+    this.saving = run
+      .catch(() => false)
+      .finally(() => {
+        this.activeSaves--;
+      });
     return run;
   }
 
@@ -588,8 +599,10 @@ export class AppState {
     this.clearFind();
   }
 
+  /** Closes the window once any write still under way has finished, so none is cut short. */
   async quit(): Promise<void> {
     if (!(await this.confirmDiscard())) return;
+    await this.saving;
     await this.clearRecovery();
     if (isTauri) await win.destroy();
   }
