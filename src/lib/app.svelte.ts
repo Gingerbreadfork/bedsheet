@@ -838,7 +838,7 @@ export class AppState {
       this.pasteIntoBlank(block, header);
       return;
     }
-    const placed = header === true && block.length > 1 ? this.placeHeader(block, at, !g.viewRows) : null;
+    const placed = header === true && block.length > 1 ? this.placeHeader(block, at, !g.viewRows, g.inHeader) : null;
     if (placed) block = block.slice(1);
     const names = placed?.names;
     if (rowList && block.length > rowList.length) {
@@ -912,11 +912,11 @@ export class AppState {
 
   /**
    * Places a header row the source marked as one, its column `j` landing in column `at(j)`. It is left
-   * out when it repeats the labels of the columns it lands in or is only Bedsheet's column letters, and
-   * if `mayName` it names columns that are new or unused. Returns the names to give them, or null when
-   * the row should be pasted as data.
+   * out when it repeats the labels it lands on, is only Bedsheet's column letters, or lands on columns
+   * selected by their headers; if `mayName` it names columns that are new or unused. Returns the names
+   * to give them, or null when the row should be pasted as data.
    */
-  private placeHeader(block: string[][], at: (j: number) => number, mayName: boolean): { names?: (string | undefined)[] } | null {
+  private placeHeader(block: string[][], at: (j: number) => number, mayName: boolean, ontoHeaders: boolean): { names?: (string | undefined)[] } | null {
     const doc = this.doc;
     const first = block[0];
     if (isLettering(first)) return {};
@@ -930,6 +930,8 @@ export class AppState {
       } else if (mayName && doc.hasHeader && (c >= doc.colCount || (doc.hasGeneratedName(c) && doc.isColumnEmpty(c)))) {
         names.push(name === '' ? undefined : name);
         renamed = true;
+      } else if (ontoHeaders) {
+        names.push(undefined);
       } else {
         return null;
       }

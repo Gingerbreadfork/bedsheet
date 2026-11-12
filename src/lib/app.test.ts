@@ -819,6 +819,29 @@ describe('clipboard', () => {
     expect(app.doc.rows).toEqual([['a', 'x@y', '999'], ['b', 'z@w', '456']]);
   });
 
+  it('keeps the rows in line when a column copied by its header is pasted onto another', () => {
+    load('name,city,zip\nann,rome,1\nbob,oslo,2\n');
+    app.grid.selectCols(0, 0);
+    app.grid.inHeader = true;
+    const { text } = app.selectionClip();
+    app.grid.selectCols(2, 2);
+    app.pasteText(text);
+    expect(app.doc.columns).toEqual(['name', 'city', 'zip']);
+    expect(app.doc.rows).toEqual([['ann', 'rome', 'ann'], ['bob', 'oslo', 'bob']]);
+    expect(app.toasts.at(-1)?.text).toBe('Pasted 2 × 1, leaving out its header row');
+  });
+
+  it('still names a new column when headed columns are pasted onto a header', () => {
+    load('name,city\nann,rome\nbob,oslo\n');
+    app.grid.selectAll();
+    const { text } = app.selectionClip(true);
+    app.grid.selectCols(1, 1);
+    app.grid.inHeader = true;
+    app.pasteText(text);
+    expect(app.doc.columns).toEqual(['name', 'city', 'city']);
+    expect(app.doc.rows).toEqual([['ann', 'ann', 'rome'], ['bob', 'bob', 'oslo']]);
+  });
+
   it('does nothing when a filter hides every row', () => {
     load('h\nalpha\nbeta\n');
     find('alpha');
