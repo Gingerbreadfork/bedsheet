@@ -276,12 +276,6 @@ export class Doc {
     );
   }
 
-  clearRange(r0: number, c0: number, r1: number, c1: number): void {
-    const edits: CellEdit[] = [];
-    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) edits.push({ r, c, value: '' });
-    this.setCells(edits, 'Clear cells');
-  }
-
   /**
    * Writes a block of values, growing the sheet if needed. Its rows start at row `r0`, or go into the
    * existing rows `r0` lists, and its columns likewise start at column `at` or go into those `at`

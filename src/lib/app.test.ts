@@ -656,7 +656,7 @@ describe('clipboard', () => {
     load('a,b\n"t\tab","say ""hi"""\n"two\nlines",plain\n');
     app.grid.selectAll();
     const text = app.selectionClip().text;
-    app.doc.clearRange(0, 0, 1, 1);
+    app.clearSelection();
     app.grid.select(0, 0, false);
     app.pasteText(text);
     expect(app.doc.rows).toEqual([['t\tab', 'say "hi"'], ['two\nlines', 'plain']]);
