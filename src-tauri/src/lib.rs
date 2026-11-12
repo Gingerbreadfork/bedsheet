@@ -52,9 +52,26 @@ fn write_in_place(target: &Path, bytes: &[u8]) -> io::Result<()> {
     file.sync_all()
 }
 
+/// Creates the sibling that will replace a file. A `private` one can only be read by its owner,
+/// so the contents of a restricted file aren't exposed before it is given that file's mode.
+fn create_temp(tmp: &Path, private: bool) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        if private {
+            options.mode(0o600);
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = private;
+    options.open(tmp)
+}
+
 /// Writes `bytes` to a new sibling of `target` carrying the mode and owner of `existing`.
 fn write_temp(tmp: &Path, bytes: &[u8], existing: Option<&fs::Metadata>) -> io::Result<()> {
-    let mut file = OpenOptions::new().write(true).create_new(true).open(tmp)?;
+    let mut file = create_temp(tmp, existing.is_some())?;
     file.write_all(bytes)?;
     if let Some(meta) = existing {
         fs::set_permissions(tmp, meta.permissions())?;
@@ -567,6 +584,19 @@ mod tests {
                 fs::metadata(&path).unwrap().permissions().mode() & 0o777,
                 0o600
             );
+        }
+
+        #[test]
+        fn starts_the_replacement_of_an_existing_file_private() {
+            let dir = scratch("private");
+            let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+            create_temp(&dir.join("replacement.tmp"), true).unwrap();
+            assert_eq!(mode(&dir.join("replacement.tmp")), 0o600);
+            let path = dir.join("shared.csv");
+            fs::write(&path, "old").unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o664)).unwrap();
+            write_atomic(&path, b"new").unwrap();
+            assert_eq!(mode(&path), 0o664);
         }
 
         #[test]
