@@ -121,6 +121,10 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
         .filter(|d| !d.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     let existing = fs::metadata(&target).ok();
+    if existing.is_some() {
+        // Renaming a new file into place would get around a mode that forbids writing to this one.
+        OpenOptions::new().write(true).open(&target)?;
+    }
     if existing
         .as_ref()
         .is_some_and(|meta| has_other_links(&target, meta))
@@ -597,6 +601,23 @@ mod tests {
             fs::set_permissions(&path, fs::Permissions::from_mode(0o664)).unwrap();
             write_atomic(&path, b"new").unwrap();
             assert_eq!(mode(&path), 0o664);
+        }
+
+        #[test]
+        fn leaves_a_read_only_file_alone() {
+            use std::os::unix::fs::MetadataExt;
+            let dir = scratch("locked");
+            // Root may write to anything.
+            if fs::metadata(&dir).unwrap().uid() == 0 {
+                return;
+            }
+            let path = dir.join("a.csv");
+            fs::write(&path, "old").unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o444)).unwrap();
+            let err = write_atomic(&path, b"new").unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+            assert_eq!(fs::read(&path).unwrap(), b"old");
+            assert_eq!(leftovers(&dir), 0);
         }
 
         #[test]
