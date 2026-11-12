@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { app, type MenuItem } from '../lib/app.svelte';
-  import { cellKey, MIN_COL_WIDTH, MAX_COL_WIDTH, DEFAULT_COL_WIDTH, type Pos } from '../lib/grid.svelte';
+  import { cellKey, MIN_COL_WIDTH, MAX_COL_WIDTH, DEFAULT_COL_WIDTH, CELL_PAD, type Pos } from '../lib/grid.svelte';
   import { isComposing } from '../lib/keys';
   import { inferAllColumnTypes } from '../lib/infer';
   import { columnLetter } from '../lib/csv';
@@ -183,13 +183,13 @@
         if (v) w = Math.max(w, measure(v.length > 120 ? v.slice(0, 120) : v));
       }
     }
-    return Math.min(MAX_COL_WIDTH, Math.max(MIN_COL_WIDTH, Math.ceil(w + 22 * grid.zoom)));
+    return Math.min(MAX_COL_WIDTH, Math.max(MIN_COL_WIDTH, Math.ceil(w + CELL_PAD)));
   }
   function headerFit(c: number): number {
     if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
     if (!measureCtx) return DEFAULT_COL_WIDTH;
     measureCtx.font = cellFont(500);
-    return Math.ceil(measure(headers[c] ?? '') + 8 + 22 * grid.zoom);
+    return Math.ceil(measure(headers[c] ?? '') + 8 + CELL_PAD);
   }
 
   $effect(() => {

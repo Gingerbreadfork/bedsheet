@@ -591,14 +591,15 @@ describe('column widths', () => {
 describe('zoom', () => {
   afterEach(() => app.setZoom(1));
 
-  it('scales the column widths, within their limits', () => {
+  it('scales the room for text in each column, leaving the padding as it is', () => {
     load('a,b,c\n1,2,3\n');
-    app.grid.widths = [100, 200, 500];
+    app.grid.widths = [52, 202, 502];
     app.setZoom(1.5);
-    expect(app.grid.widths).toEqual([150, 300, 560]);
-    app.grid.widths = [150, 300, 60];
+    expect(app.grid.widths).toEqual([67, 292, 742]);
     app.setZoom(1);
-    expect(app.grid.widths).toEqual([100, 200, 48]);
+    expect(app.grid.widths).toEqual([52, 202, 502]);
+    app.setZoom(0.7);
+    expect(app.grid.widths).toEqual([43, 148, 358]);
   });
 
   it('leaves the widths alone when it is already at its limit', () => {

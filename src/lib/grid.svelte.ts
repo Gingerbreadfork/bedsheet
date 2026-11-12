@@ -34,6 +34,8 @@ export const cellKey = (r: number, c: number): number => r * COL_STRIDE + c;
 export const MIN_COL_WIDTH = 48;
 export const MAX_COL_WIDTH = 560;
 export const DEFAULT_COL_WIDTH = 140;
+/** The part of a column's width taken by a cell's padding and border, which stays the same at every zoom. */
+export const CELL_PAD = 22;
 
 /** Sorts runs of rows and joins those that overlap or touch. */
 function joinRuns(runs: RowRun[]): RowRun[] {
