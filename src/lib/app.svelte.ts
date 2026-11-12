@@ -109,6 +109,12 @@ export interface Toast {
   kind: 'info' | 'success' | 'error';
 }
 
+/** Tests a cell for the query and replaces it there by the same rules, so every match can be replaced. */
+interface Finder {
+  test: (value: string) => boolean;
+  replace: (value: string, replacement: string) => string;
+}
+
 const LARGE_FILE_BYTES = 256 * 1024 * 1024;
 const RECOVERY_IDLE_MS = 5000;
 
@@ -1236,7 +1242,7 @@ export class AppState {
       g.ensureValid();
       return;
     }
-    const test = this.matcher();
+    const test = this.finder()?.test ?? null;
     this.queryError = test === null;
     const rows = this.doc.rows;
     const scope = this.scope;
@@ -1274,20 +1280,48 @@ export class AppState {
     g.ensureValid();
   }
 
-  /** Builds the cell test for the current query and options, or null when the pattern is invalid. */
-  private matcher(): ((value: string) => boolean) | null {
+  /** Builds the cell test and replacement for the current query and options, or null when the pattern is invalid. */
+  private finder(): Finder | null {
     const q = this.query;
     if (this.useRegex) {
       try {
-        const re = new RegExp(this.wholeCell ? `^(?:${q})$` : q, this.matchCase ? 'u' : 'iu');
-        return (v) => re.test(v);
+        const pattern = this.wholeCell ? `^(?:${q})$` : q;
+        const flags = this.matchCase ? 'u' : 'iu';
+        const one = new RegExp(pattern, flags);
+        const all = new RegExp(pattern, `g${flags}`);
+        return { test: (v) => one.test(v), replace: (v, to) => v.replace(all, to) };
       } catch {
         return null;
       }
     }
-    const needle = this.matchCase ? q : q.toLowerCase();
-    if (this.wholeCell) return this.matchCase ? (v) => v === needle : (v) => v.toLowerCase() === needle;
-    return this.matchCase ? (v) => v.includes(needle) : (v) => v !== '' && v.toLowerCase().includes(needle);
+    if (this.matchCase) {
+      if (this.wholeCell) return { test: (v) => v === q, replace: (_, to) => to };
+      return { test: (v) => v.includes(q), replace: (v, to) => v.replaceAll(q, () => to) };
+    }
+    const needle = q.toLowerCase();
+    if (this.wholeCell) return { test: (v) => v.toLowerCase() === needle, replace: (_, to) => to };
+    // Lowercasing lengthens a few letters, and positions in the lowered text then stop lining up with the cell's.
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const one = new RegExp(escaped, 'iu');
+    const all = new RegExp(escaped, 'giu');
+    return {
+      test: (v) => {
+        if (v === '') return false;
+        const lower = v.toLowerCase();
+        return lower.includes(needle) && (lower.length === v.length || one.test(v));
+      },
+      replace: (v, to) => {
+        const lower = v.toLowerCase();
+        if (lower.length !== v.length) return v.replace(all, () => to);
+        let out = '';
+        let from = 0;
+        for (let i = lower.indexOf(needle); i >= 0; i = lower.indexOf(needle, from)) {
+          out += v.slice(from, i) + to;
+          from = i + needle.length;
+        }
+        return out + v.slice(from);
+      },
+    };
   }
 
   setQuery(q: string): void {
@@ -1432,8 +1466,9 @@ export class AppState {
       this.goToMatch(this.nearestMatch(1));
       return;
     }
-    const v = this.doc.cell(p.r, p.c);
-    this.doc.setCell(p.r, p.c, this.replaceIn(v));
+    const find = this.finder();
+    if (!find) return;
+    this.doc.setCell(p.r, p.c, find.replace(this.doc.cell(p.r, p.c), this.replaceWith));
     this.runSearch(true);
     if (g.matches.length === 0) return;
     const same = g.matches[i];
@@ -1444,23 +1479,19 @@ export class AppState {
   replaceAll(): void {
     const g = this.grid;
     this.flushSearch();
-    if (g.matches.length === 0) return;
-    const edits = g.matches.map((p) => ({ r: p.r, c: p.c, value: this.replaceIn(this.doc.cell(p.r, p.c)) }));
+    const find = this.finder();
+    if (g.matches.length === 0 || !find) return;
+    const edits: CellEdit[] = [];
+    for (const p of g.matches) {
+      const before = this.doc.cell(p.r, p.c);
+      const value = find.replace(before, this.replaceWith);
+      if (value !== before) edits.push({ r: p.r, c: p.c, value });
+    }
     const n = edits.length;
     this.doc.setCells(edits, 'Replace all');
     this.runSearch(true);
-    this.toast(`Replaced ${n} ${n === 1 ? 'cell' : 'cells'}`, 'success');
-  }
-
-  private replaceIn(value: string): string {
-    if (this.useRegex) {
-      const pattern = this.wholeCell ? `^(?:${this.query})$` : this.query;
-      return value.replace(new RegExp(pattern, this.matchCase ? 'gu' : 'giu'), this.replaceWith);
-    }
-    if (this.wholeCell) return this.replaceWith;
-    if (this.matchCase) return value.replaceAll(this.query, () => this.replaceWith);
-    const re = new RegExp(this.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    return value.replace(re, () => this.replaceWith);
+    if (n === 0) this.toast('The matches already read that way');
+    else this.toast(`Replaced ${n} ${n === 1 ? 'cell' : 'cells'}`, 'success');
   }
 
   promptGotoRow(): void {

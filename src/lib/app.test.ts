@@ -102,6 +102,36 @@ describe('replace', () => {
     expect(column()).toEqual(['other', 'x']);
   });
 
+  it('replaces every match it counts, whatever letter case folding is involved', () => {
+    load('unit\n\u212Aelvin\nkilo\n');
+    app.replaceWith = 'C';
+    find('k');
+    expect(app.grid.matches).toHaveLength(2);
+    app.replaceAll();
+    expect(column()).toEqual(['Celvin', 'Cilo']);
+    expect(app.toasts.at(-1)?.text).toBe('Replaced 2 cells');
+  });
+
+  it('does not count a letter that only matches once lowercasing has split it', () => {
+    load('city\n\u0130stanbul\nIzmir\n');
+    app.replaceWith = 'x';
+    find('i');
+    expect(app.grid.matches.map((m) => m.r)).toEqual([1]);
+    app.replaceAll();
+    expect(column()).toEqual(['\u0130stanbul', 'xzmxr']);
+    expect(app.toasts.at(-1)?.text).toBe('Replaced 1 cell');
+  });
+
+  it('says so when the replacement changes nothing', () => {
+    load('h\nalpha\n');
+    app.matchCase = true;
+    app.replaceWith = 'alpha';
+    find('alpha');
+    app.replaceAll();
+    expect(app.toasts.at(-1)?.text).toBe('The matches already read that way');
+    expect(app.doc.dirty).toBe(false);
+  });
+
   it('moves on when the replacement still contains the query', () => {
     load('h\na\nb a\nca\n');
     app.replaceWith = 'aa';
