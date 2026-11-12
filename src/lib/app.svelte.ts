@@ -1,4 +1,4 @@
-import { Doc } from './document.svelte';
+import { Doc, insertedAt } from './document.svelte';
 import { GridState, cellKey, DEFAULT_COL_WIDTH, type Pos } from './grid.svelte';
 import { serializeCsv, columnLetter, blockWidth, isLettering, DELIMITERS, delimiterLabel } from './csv';
 import { readClipboard, toHtmlTable, HTML_MAX_CELLS, type ClipBlock } from './clipboard';
@@ -1078,8 +1078,7 @@ export class AppState {
         const n = empty ? 1 : count;
         const shifted = g.viewRows.map((d) => (d >= at ? d + n : d));
         const fresh = Array.from({ length: n }, (_, i) => at + i);
-        shifted.splice(viewAt, 0, ...fresh);
-        g.viewRows = shifted;
+        g.viewRows = insertedAt(shifted, viewAt, fresh);
       }
     });
     g.select(viewAt, g.anchor.c);

@@ -35,7 +35,7 @@ const UNREACHABLE: Command = { label: '', redo() {}, undo() {} };
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 /** `list` with `items` inserted at `at`. Avoids spreading a long list into call arguments. */
-function insertedAt<T>(list: T[], at: number, items: T[]): T[] {
+export function insertedAt<T>(list: T[], at: number, items: T[]): T[] {
   if (items.length < 10_000) {
     list.splice(at, 0, ...items);
     return list;

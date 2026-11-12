@@ -1043,6 +1043,19 @@ describe('editing commands', () => {
     expect(column(0)).toEqual(['3', '2', '1']);
   });
 
+  it('inserts rows under a very large selection of filtered rows', () => {
+    const n = 300_000;
+    load(`h\n${'x\n'.repeat(n)}`);
+    find('x');
+    app.toggleFilterRows();
+    app.grid.selectAll();
+    app.insertRows('below');
+    expect(app.doc.rowCount).toBe(2 * n);
+    expect(app.grid.viewRows).toHaveLength(2 * n);
+    expect(app.grid.viewRows!.at(-1)).toBe(2 * n - 1);
+    expect(app.grid.anchor.r).toBe(n);
+  });
+
   it('fills right from the first selected column', () => {
     load('a,b,c\n1,,\n2,x,\n');
     app.grid.selectAll();
