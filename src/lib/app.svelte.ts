@@ -40,7 +40,7 @@ export interface CommandDef {
   group: Group;
   shortcut?: string;
   altShortcuts?: string[];
-  /** Shown as a hint only; the key is handled natively (clipboard events). */
+  /** Shown as a hint only; the key is handled by the browser's clipboard events. */
   nativeKey?: boolean;
   /** Fires even while typing in an input. */
   global?: boolean;

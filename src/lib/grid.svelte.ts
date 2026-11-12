@@ -282,7 +282,7 @@ export class GridState {
     if (scroll) this.scrollIntoView?.(p);
   }
 
-  /** Moves the cursor (or the focus corner when extending). `jump` goes to the sheet edge. */
+  /** Moves the cursor, or the focus corner when extending. `jump` goes to the sheet edge. */
   move(dr: number, dc: number, extend: boolean, jump = false): void {
     const base = extend ? this.focus : this.anchor;
     let r = base.r;
