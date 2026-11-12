@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { app } from './app.svelte';
-import { clipboard, recovery, saveBytes } from './platform';
+import { clipboard, fileStamp, recovery, saveBytes } from './platform';
 import { toHtmlTable } from './clipboard';
 import { baseName } from './paths';
 
 vi.mock('./platform', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./platform')>();
-  return { ...actual, saveBytes: vi.fn(actual.saveBytes) };
+  return { ...actual, saveBytes: vi.fn(actual.saveBytes), fileStamp: vi.fn(actual.fileStamp) };
 });
 
 vi.stubGlobal('requestAnimationFrame', (fn: () => void) => setTimeout(fn, 0));
@@ -18,6 +18,13 @@ function load(text: string): void {
 }
 
 const column = (c = 0): string[] => app.doc.rows.map((r) => r[c]);
+
+const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+/** Opens `text` as a file read from disk, so saving it checks whether the file changed since. */
+async function loadFromDisk(text: string): Promise<void> {
+  await app.loadFile({ name: 't.csv', path: '/tmp/t.csv', bytes: new TextEncoder().encode(text), stamp: { size: text.length, modified: 1 } });
+}
 
 function blank(): void {
   app.doc.newSheet();
@@ -204,6 +211,42 @@ describe('dialogs', () => {
     expect(focus).toHaveBeenCalled();
     app.grid.focusGrid = null;
   });
+
+  it('stay up until answered when something else wants the sheet gone', async () => {
+    await loadFromDisk('h\na\n');
+    app.doc.setCell(0, 0, 'b');
+    vi.mocked(fileStamp).mockResolvedValueOnce({ size: 9, modified: 2 });
+    vi.mocked(saveBytes).mockResolvedValueOnce({ path: '/tmp/t.csv', name: 't.csv', stamp: null });
+    const saved = app.save(false);
+    await settle();
+    expect(app.dialog?.title).toBe('t.csv has changed on disk');
+    const closing = app.quit();
+    await settle();
+    expect(app.dialog?.title).toBe('t.csv has changed on disk');
+    app.dialog!.actions.find((a) => a.label === 'Overwrite')!.run();
+    expect(await saved).toBe(true);
+    expect(app.doc.dirty).toBe(false);
+    await closing;
+    expect(app.dialog).toBeNull();
+  });
+
+  it('wait their turn behind one that is already open', async () => {
+    app.doc.close();
+    vi.spyOn(recovery, 'pending').mockResolvedValue([{ id: 'abc123', snapshot: { name: 'notes.csv', path: null, encoding: 'UTF-8', delimiter: ',', hasHeader: true, savedAt: 0, text: 'a\n' } }]);
+    void app.init();
+    await settle();
+    expect(app.dialog?.title).toBe('Recover unsaved changes to notes.csv?');
+    vi.mocked(fileStamp).mockResolvedValueOnce({ size: 2 ** 30, modified: 1 });
+    const opening = app.openPath('/tmp/big.csv');
+    await settle();
+    expect(app.dialog?.title).toBe('Recover unsaved changes to notes.csv?');
+    app.dialog!.dismiss!();
+    expect(app.dialog?.title).toBe('big.csv is 1.0 GB');
+    app.dialog!.actions.find((a) => a.label === 'Cancel')!.run();
+    await opening;
+    expect(app.dialog).toBeNull();
+    expect(app.doc.loaded).toBe(false);
+  });
 });
 
 describe('an edit still open in a cell or header', () => {
@@ -248,10 +291,6 @@ describe('crash recovery', () => {
     const clear = vi.spyOn(recovery, 'clear').mockResolvedValue();
     void app.init();
     return { clear };
-  }
-
-  async function settle(): Promise<void> {
-    await new Promise((r) => setTimeout(r, 0));
   }
 
   it('keeps the snapshot for next time when the prompt is dismissed with Escape', async () => {

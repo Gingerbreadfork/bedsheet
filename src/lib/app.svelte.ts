@@ -178,6 +178,7 @@ export class AppState {
   private recoveryId = Math.random().toString(36).slice(2, 12);
   private recoveryTimer: ReturnType<typeof setTimeout> | undefined;
   private saving: Promise<unknown> = Promise.resolve();
+  private waitingDialogs: (() => void)[] = [];
 
   constructor() {
     this.grid.mono = loadSetting('mono', false);
@@ -367,13 +368,18 @@ export class AppState {
     return closed;
   }
 
-  /** Closes the dialog and hands the keyboard back to the grid. */
+  /** Closes the dialog and shows the next one waiting, or hands the keyboard back to the grid. */
   private closeDialog(): void {
     this.dialog = null;
-    this.grid.focusGrid?.();
+    const next = this.waitingDialogs.shift();
+    if (next) next();
+    else this.grid.focusGrid?.();
   }
 
-  /** Shows a dialog and resolves with the value of the button that was chosen, or with `dismissed` when Escape closes it. */
+  /**
+   * Shows a dialog and resolves with the value of the button that was chosen, or with `dismissed` when
+   * Escape closes it. It waits its turn behind a dialog that is already open, so none goes unanswered.
+   */
   private choose<T>(
     title: string,
     message: string,
@@ -385,41 +391,40 @@ export class AppState {
         this.closeDialog();
         resolve(value);
       };
-      this.dialog = {
-        title,
-        message,
-        actions: options.map((o) => ({ label: o.label, kind: o.kind, run: () => pick(o.value) })),
-        dismiss: dismissed && (() => pick(dismissed.value)),
+      const show = (): void => {
+        this.dialog = {
+          title,
+          message,
+          actions: options.map((o) => ({ label: o.label, kind: o.kind, run: () => pick(o.value) })),
+          dismiss: dismissed && (() => pick(dismissed.value)),
+        };
       };
+      if (this.dialog) this.waitingDialogs.push(show);
+      else show();
     });
   }
 
-  /** Asks before throwing away unsaved work, counting an edit still open in a cell or header. */
-  confirmDiscard(): Promise<boolean> {
-    this.commitPending();
-    if (!this.doc.dirty) return Promise.resolve(true);
-    return new Promise((resolve) => {
-      const close = (v: boolean) => {
-        this.closeDialog();
-        resolve(v);
-      };
-      this.dialog = {
-        title: `Save changes to ${this.doc.name}?`,
-        message: 'Your edits will be lost if you don’t save them.',
-        actions: [
-          { label: 'Don’t save', kind: 'ghost', run: () => close(true) },
-          { label: 'Cancel', run: () => close(false) },
-          {
-            label: 'Save',
-            kind: 'primary',
-            run: async () => {
-              const ok = await this.save(false);
-              close(ok);
-            },
-          },
+  /**
+   * Asks before throwing away unsaved work, counting an edit still open in a cell or header.
+   * Refuses while another question is on screen, and asks again if the sheet changed during the save.
+   */
+  async confirmDiscard(): Promise<boolean> {
+    for (;;) {
+      this.commitPending();
+      if (!this.doc.dirty) return true;
+      if (this.dialog) return false;
+      const choice = await this.choose<'discard' | 'cancel' | 'save'>(
+        `Save changes to ${this.doc.name}?`,
+        'Your edits will be lost if you don’t save them.',
+        [
+          { label: 'Don’t save', kind: 'ghost', value: 'discard' },
+          { label: 'Cancel', value: 'cancel' },
+          { label: 'Save', kind: 'primary', value: 'save' },
         ],
-      };
-    });
+      );
+      if (choice === 'discard') return true;
+      if (choice === 'cancel' || !(await this.save(false))) return false;
+    }
   }
 
   // ---------- files ----------
