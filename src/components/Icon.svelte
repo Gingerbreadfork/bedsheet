@@ -20,6 +20,7 @@
     regex: 'M6 18h.01M15 5v8M11.5 7l7 4M18.5 7l-7 4',
     wholeCell: 'M4 7h16v10H4zM8 12h8',
     scope: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',
+    selectMatches: 'm4 7 2 2 4-4M4 16l2 2 4-4M14 7h6M14 16h6',
     file: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Zm0 0v5h5',
     sortAsc: 'M4 6h9M4 12h6M4 18h4M17 20V8m-4 4 4-4 4 4',
     sortDesc: 'M4 6h9M4 12h6M4 18h4M17 4v12m-4-4 4 4 4-4',

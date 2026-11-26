@@ -1832,3 +1832,137 @@ describe('cells picked by Ctrl-clicking them', () => {
     expect(app.grid.viewRows).toEqual([1]);
   });
 });
+
+describe('selecting every match', () => {
+  it('selects matches wherever they are, so their rows can be deleted at once', () => {
+    load('n,v\nx,a\nb,b\nc,x\nd,d\nx,e\n');
+    find('x');
+    app.selectMatches();
+    expect(app.grid.selectedCellRows).toEqual([{ r: 0, cols: [0] }, { r: 2, cols: [1] }, { r: 4, cols: [0] }]);
+    expect(app.grid.selectedCellCount).toBe(3);
+    expect(app.toasts.at(-1)?.text).toBe('Selected 3 matches');
+    app.deleteRows();
+    expect(app.doc.rows).toEqual([['b', 'b'], ['d', 'd']]);
+    expect(app.toasts.at(-1)?.text).toBe('Deleted 3 rows');
+    app.undo();
+    expect(column()).toEqual(['x', 'b', 'c', 'd', 'x']);
+  });
+
+  it('keeps the cursor on the current match and joins the others into blocks', () => {
+    load('a,b,c\nx,x,1\nx,x,2\n3,4,x\nx,5,6\n');
+    find('x');
+    app.goToMatch(4);
+    app.selectMatches();
+    expect(app.grid.anchor).toEqual({ r: 2, c: 2 });
+    expect(app.grid.pickedBlocks).toEqual([{ r0: 0, c0: 0, r1: 1, c1: 1 }, { r0: 3, c0: 0, r1: 3, c1: 0 }]);
+    expect(app.grid.selectedCellCount).toBe(6);
+    expect(app.grid.contains(1, 1)).toBe(true);
+    expect(app.grid.contains(2, 0)).toBe(false);
+  });
+
+  it('puts the cursor on the next match when none is current', () => {
+    load('a,b,c\nx,x,1\nx,x,2\n3,4,x\nx,5,6\n');
+    app.grid.select(2, 0, false);
+    find('x');
+    app.selectMatches();
+    expect(app.grid.anchor).toEqual({ r: 2, c: 2 });
+    expect(app.grid.selectedCellRows).toEqual([{ r: 0, cols: [0, 1] }, { r: 1, cols: [0, 1] }, { r: 2, cols: [2] }, { r: 3, cols: [0] }]);
+  });
+
+  it('selects the matches of a query that was just typed', () => {
+    load('n\nalpha\nbeta\nalpha\n');
+    find('beta');
+    app.setQuery('alpha');
+    app.selectMatches();
+    expect(app.grid.selectedRowIndices).toEqual([0, 2]);
+  });
+
+  it('answers its shortcut before a query that was just typed has been searched', () => {
+    load('n\nalpha\nbeta\nalpha\n');
+    app.setQuery('alpha');
+    expect(app.grid.matches).toEqual([]);
+    expect(app.handleKeydown(new KeyboardEvent('keydown', { key: 'L', ctrlKey: true, shiftKey: true }))).toBe(true);
+    expect(app.grid.selectedRowIndices).toEqual([0, 2]);
+  });
+
+  it('selects a single match as a plain cell', () => {
+    load('n\nalpha\nbeta\n');
+    find('beta');
+    app.selectMatches();
+    expect(app.grid.isSingle).toBe(true);
+    expect(app.grid.anchor).toEqual({ r: 1, c: 0 });
+    expect(app.toasts.at(-1)?.text).toBe('Selected 1 match');
+  });
+
+  it('works on the rows a filter shows, leaving out a match the filter still hides', () => {
+    load('n,v\nx,1\ny,2\nx,3\ny,4\nx,5\n');
+    find('x');
+    app.toggleFilterRows();
+    app.grid.select(0, 1, false);
+    app.doc.setCell(1, 0, 'x');
+    app.selectMatches();
+    expect(app.grid.viewRows).toEqual([0, 2, 4]);
+    expect(app.grid.anchor).toEqual({ r: 1, c: 0 });
+    expect(app.grid.selectedRowIndices).toEqual([0, 2, 4]);
+    expect(app.toasts.at(-1)?.text).toBe('Selected 3 matches');
+    app.deleteRows();
+    expect(app.doc.rows).toEqual([['x', '2'], ['y', '4']]);
+  });
+
+  it('says so when the filter hides every match', () => {
+    load('n,v\nx,1\ny,2\nx,3\n');
+    find('x');
+    app.toggleFilterRows();
+    app.doc.setCells([{ r: 0, c: 0, value: 'q' }, { r: 1, c: 0, value: 'x' }, { r: 2, c: 0, value: 'q' }], 'Edit');
+    app.grid.select(1, 1, false);
+    app.selectMatches();
+    expect(app.grid.matches).toEqual([{ r: 1, c: 0 }]);
+    expect(app.grid.viewRows).toEqual([0, 2]);
+    expect(app.grid.isSingle).toBe(true);
+    expect(app.grid.anchor).toEqual({ r: 1, c: 1 });
+    expect(app.toasts.at(-1)?.text).toBe('Every match is hidden by the filter');
+  });
+
+  it('leaves the selection alone when nothing matches', () => {
+    load('n\na\nb\nc\n');
+    app.grid.select(0, 0, false);
+    app.grid.extendTo(1, 0, false);
+    find('zzz');
+    const selectAll = app.commands.find((c) => c.id === 'find.selectAll');
+    expect(selectAll?.when?.()).toBe(false);
+    app.selectMatches();
+    expect(app.grid.range).toMatchObject({ r0: 0, r1: 1 });
+    find('a');
+    expect(selectAll?.when?.()).toBe(true);
+  });
+
+  it('selects a great many scattered matches and deletes their rows', () => {
+    const n = 200_000;
+    load(`a,b\n${'x,y\ny,x\ny,y\n'.repeat(n / 2)}`);
+    find('x');
+    app.selectMatches();
+    expect(app.grid.selectedCellCount).toBe(n);
+    expect(app.grid.selectedRowCount).toBe(n);
+    expect(app.grid.selectedCellRows).toHaveLength(n);
+    app.deleteRows();
+    expect(app.doc.rowCount).toBe(n / 2);
+    expect(app.grid.matches).toEqual([]);
+  });
+
+  it('takes a Ctrl-click on a header or a row number after a great many matches', () => {
+    const n = 400_000;
+    load(`a,b\n${'x,y\ny,y\n'.repeat(n / 2)}`);
+    find('x');
+    app.selectMatches();
+    expect(app.grid.toggleCol(0)).toBe(true);
+    expect(app.grid.isSplit).toBe(false);
+    expect(app.grid.selectedCellCount).toBe(n);
+    app.goToMatch(n / 2 - 1);
+    app.selectMatches();
+    app.grid.widenToRows();
+    expect(app.grid.selectedRowCount).toBe(n / 2);
+    expect(app.grid.toggleRow(n - 2)).toBe(false);
+    expect(app.grid.selectedRowCount).toBe(n / 2 - 1);
+    expect(app.grid.anchor.r).toBe(n - 4);
+  });
+});

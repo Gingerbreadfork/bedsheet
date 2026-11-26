@@ -48,6 +48,33 @@ function joinRuns(runs: RowRun[]): RowRun[] {
   return out;
 }
 
+/**
+ * Joins cells into blocks that don't overlap: runs along each row, stacked where the next row down
+ * holds the same run. Takes the cells row by row, each row left to right.
+ */
+function joinCells(cells: Pos[]): Range[] {
+  const out: Range[] = [];
+  let above = new Map<number, Range>();
+  let here = new Map<number, Range>();
+  let row = -1;
+  for (let i = 0; i < cells.length; ) {
+    const { r, c: c0 } = cells[i];
+    let c1 = c0;
+    for (i++; i < cells.length && cells[i].r === r && cells[i].c === c1 + 1; i++) c1++;
+    if (r !== row) {
+      above = r === row + 1 ? here : new Map();
+      here = new Map();
+      row = r;
+    }
+    const key = c0 * COL_STRIDE + c1;
+    let block = above.get(key);
+    if (block) block.r1 = r;
+    else out.push((block = { r0: r, c0, r1: r, c1 }));
+    here.set(key, block);
+  }
+  return out;
+}
+
 const inRange = (b: Range, r: number, c: number): boolean => r >= b.r0 && r <= b.r1 && c >= b.c0 && c <= b.c1;
 
 const overlaps = (a: Range, b: Range): boolean => a.r0 <= b.r1 && b.r0 <= a.r1 && a.c0 <= b.c1 && b.c0 <= a.c1;
@@ -82,7 +109,7 @@ export class GridState {
   pickedCols = $state.raw<number[]>([]);
   /** Runs of whole rows selected by Ctrl-clicking their numbers, besides the range's own rows. */
   pickedRows = $state.raw<RowRun[]>([]);
-  /** Blocks of cells selected by Ctrl-clicking or Ctrl-dragging, besides the range, newest first. No two overlap. */
+  /** Blocks of cells selected besides the range, as Ctrl-clicking, Ctrl-dragging and selecting every match leave them. No two overlap. */
   pickedBlocks = $state.raw<Range[]>([]);
   #viewRows = $state.raw<number[] | null>(null);
   /** The column the rows were last sorted by, until something reorders them again. */
@@ -306,6 +333,18 @@ export class GridState {
     this.inHeader = false;
     this.anchor = { r: 0, c: 0 };
     this.focus = this.clamp({ r: this.rowCount - 1, c: this.colCount - 1 });
+  }
+
+  /** Selects just `cells`, which come row by row, each row left to right. The cursor goes on cell `at` of them. */
+  selectCells(cells: Pos[], at = 0): void {
+    const p = cells[at];
+    if (!p) return;
+    this.unpick();
+    this.inHeader = false;
+    this.anchor = p;
+    this.focus = p;
+    this.pickedBlocks = joinCells(cells.filter((_, i) => i !== at));
+    this.scrollIntoView?.(p);
   }
 
   selectRows(from: number, to: number): void {

@@ -41,7 +41,8 @@
     if (isComposing(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
-      app.stepMatch(e.shiftKey ? -1 : 1);
+      if (e.altKey) app.selectMatches();
+      else app.stepMatch(e.shiftKey ? -1 : 1);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       app.closeFind();
@@ -93,6 +94,10 @@
       <Icon name="chevronDown" />
     </button>
   </div>
+  <button class="chip" title="Select all matches (Alt+Enter)" disabled={n === 0} onclick={() => app.selectMatches()}>
+    <Icon name="selectMatches" size={14} />
+    Select all
+  </button>
   <button class="chip" class:on={app.scope !== null} title="Search only in the selection (Alt+L)" onclick={() => app.toggleScope()}>
     <Icon name="scope" size={14} />
     {app.scope ? `In ${app.scope.label}` : 'In selection'}

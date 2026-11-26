@@ -1450,6 +1450,34 @@ export class AppState {
     if (vr >= 0) g.select(vr, p.c);
   }
 
+  /**
+   * Selects every match that is showing and hands the keyboard to the grid. The cursor goes on the
+   * current match, or on the next one showing when there is none.
+   */
+  selectMatches(): void {
+    this.commitPending();
+    this.flushSearch();
+    const g = this.grid;
+    const from = g.matchIndex >= 0 ? g.matchIndex : this.nearestMatch(1);
+    const cells: Pos[] = [];
+    let at = -1;
+    for (let i = 0; i < g.matches.length; i++) {
+      const p = g.matches[i];
+      const r = g.viewRow(p.r);
+      if (r < 0) continue;
+      if (at < 0 && i >= from) at = cells.length;
+      cells.push({ r, c: p.c });
+    }
+    const n = cells.length;
+    if (n === 0) {
+      if (g.matches.length > 0) this.toast('Every match is hidden by the filter');
+      return;
+    }
+    g.selectCells(cells, Math.max(at, 0));
+    g.focusGrid?.();
+    this.toast(`Selected ${n} ${n === 1 ? 'match' : 'matches'}`);
+  }
+
   /** Replaces the current match, or first moves to the nearest one when there is none or it no longer matches. */
   replaceCurrent(): void {
     const g = this.grid;
@@ -1616,6 +1644,7 @@ export class AppState {
       { id: 'find.replace', title: 'Find and replace', group: 'Find', shortcut: 'Ctrl+H', global: true, when: loaded, run: () => this.openFind(true) },
       { id: 'find.next', title: 'Next match', group: 'Find', shortcut: 'F3', global: true, when: () => this.grid.matches.length > 0, run: () => this.stepMatch(1) },
       { id: 'find.prev', title: 'Previous match', group: 'Find', shortcut: 'Shift+F3', global: true, when: () => this.grid.matches.length > 0, run: () => this.stepMatch(-1) },
+      { id: 'find.selectAll', title: 'Select all matches', group: 'Find', shortcut: 'Ctrl+Shift+L', global: true, when: () => this.grid.matches.length > 0 || this.searchTimer !== undefined, run: () => this.selectMatches() },
       { id: 'find.case', title: () => (this.matchCase ? 'Find: ignore case' : 'Find: match case'), group: 'Find', shortcut: 'Alt+C', global: true, when: () => this.searchOpen, run: () => this.toggleMatchCase() },
       { id: 'find.wholeCell', title: () => (this.wholeCell ? 'Find: match anywhere in a cell' : 'Find: match whole cells only'), group: 'Find', shortcut: 'Alt+W', global: true, when: () => this.searchOpen, run: () => this.toggleWholeCell() },
       { id: 'find.regex', title: () => (this.useRegex ? 'Find: plain text' : 'Find: use a regular expression'), group: 'Find', shortcut: 'Alt+R', global: true, when: () => this.searchOpen, run: () => this.toggleRegex() },
