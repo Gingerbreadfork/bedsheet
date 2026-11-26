@@ -110,7 +110,9 @@ installer closes them all. On Linux it opens the release page, where you can fet
 package.
 
 "Check for updates" in the menu asks on the spot, and "Check automatically" turns the regular
-checks off. A copy installed as a Flatpak leaves updates to Flatpak.
+checks off. "About Bedsheet", in the same menu, shows the version you are running, links to
+the source and the issue tracker, and has both controls too. A copy installed as a Flatpak
+leaves updates to Flatpak.
 
 ## Using it
 

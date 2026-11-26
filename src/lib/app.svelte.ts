@@ -160,6 +160,7 @@ export class AppState {
   theme = $state<Theme>(loadSetting<Theme>('theme', 'system'));
   paletteOpen = $state(false);
   shortcutsOpen = $state(false);
+  aboutOpen = $state(false);
   prompt = $state.raw<PromptState | null>(null);
   menu = $state.raw<MenuState | null>(null);
   dialog = $state.raw<DialogState | null>(null);
@@ -392,6 +393,10 @@ export class AppState {
     }
     if (this.shortcutsOpen) {
       this.shortcutsOpen = false;
+      closed = true;
+    }
+    if (this.aboutOpen) {
+      this.aboutOpen = false;
       closed = true;
     }
     if (this.prompt) {
@@ -1691,6 +1696,13 @@ export class AppState {
     }
   }
 
+  // ---------- about ----------
+
+  openAbout(): void {
+    this.shortcutsOpen = false;
+    this.aboutOpen = true;
+  }
+
   // ---------- view ----------
 
   setTheme(t: Theme): void {
@@ -1720,10 +1732,15 @@ export class AppState {
 
   // ---------- keyboard ----------
 
+  /** True while the shortcuts sheet or the About box covers the grid. */
+  get covered(): boolean {
+    return this.shortcutsOpen || this.aboutOpen;
+  }
+
   handleKeydown(e: KeyboardEvent): boolean {
     const editable = isEditableTarget(e.target);
-    // The shortcuts sheet covers the grid, so only the key that closes it works while it is open.
-    const covered = this.shortcutsOpen;
+    // A sheet over the grid takes the keyboard. Only the key that closes the shortcuts sheet still works.
+    const covered = this.covered;
     if (!covered && !this.doc.loaded && !this.busy && !editable && eventMatches(e, PASTE_KEY)) {
       e.preventDefault();
       void this.paste();
@@ -1731,7 +1748,7 @@ export class AppState {
     }
     for (const { s, cmd } of this.bindings) {
       if (!eventMatches(e, s)) continue;
-      if (covered && cmd.id !== 'help.shortcuts') continue;
+      if (covered && !(this.shortcutsOpen && cmd.id === 'help.shortcuts')) continue;
       if (editable && !cmd.global) continue;
       if (cmd.when && !cmd.when()) continue;
       e.preventDefault();
@@ -1824,6 +1841,7 @@ export class AppState {
 
       { id: 'help.palette', title: 'Command palette', group: 'Help', shortcut: 'Ctrl+K', altShortcuts: ['Ctrl+Shift+P'], global: true, run: () => (this.paletteOpen = !this.paletteOpen) },
       { id: 'help.shortcuts', title: 'Keyboard shortcuts', group: 'Help', shortcut: 'Ctrl+/', global: true, run: () => this.toggleShortcuts() },
+      { id: 'help.about', title: 'About Bedsheet', group: 'Help', run: () => this.openAbout() },
       { id: 'help.getUpdate', title: () => this.updateLabel, group: 'Help', when: () => this.newRelease !== null, run: () => this.getUpdate() },
       { id: 'help.checkUpdates', title: 'Check for updates', group: 'Help', when: () => this.updatable, run: () => this.checkForUpdates() },
       {

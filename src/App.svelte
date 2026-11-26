@@ -14,6 +14,7 @@
   import Dialog from './components/Dialog.svelte';
   import Prompt from './components/Prompt.svelte';
   import Shortcuts from './components/Shortcuts.svelte';
+  import About from './components/About.svelte';
   import Toasts from './components/Toasts.svelte';
 
   const { doc } = app;
@@ -146,6 +147,9 @@
   {/if}
   {#if app.shortcutsOpen}
     <Shortcuts />
+  {/if}
+  {#if app.aboutOpen}
+    <About />
   {/if}
   <ContextMenu />
   <Dialog />

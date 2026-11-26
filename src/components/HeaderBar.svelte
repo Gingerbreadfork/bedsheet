@@ -27,6 +27,7 @@
       'sep',
       { label: 'Command palette', shortcut: 'Ctrl+K', run: () => (app.paletteOpen = true) },
       { label: 'Keyboard shortcuts', shortcut: 'Ctrl+/', run: () => (app.shortcutsOpen = true) },
+      { label: 'About Bedsheet', run: () => app.openAbout() },
     ];
     if (app.updatable) {
       items.push('sep');

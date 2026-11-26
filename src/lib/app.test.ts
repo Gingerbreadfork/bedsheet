@@ -1157,6 +1157,24 @@ describe('the shortcuts sheet', () => {
   });
 });
 
+describe('the About box', () => {
+  const press = (key: string, ctrlKey = false): boolean => app.handleKeydown(new KeyboardEvent('keydown', { key, ctrlKey }));
+
+  it('takes the keyboard from the grid until it is closed', () => {
+    load('h\na\n');
+    app.shortcutsOpen = true;
+    app.openAbout();
+    expect(app.shortcutsOpen).toBe(false);
+    expect(press('Delete')).toBe(false);
+    expect(press('/', true)).toBe(false);
+    expect(column()).toEqual(['a']);
+    expect(app.closeOverlays()).toBe(true);
+    expect(app.aboutOpen).toBe(false);
+    expect(press('Delete')).toBe(true);
+    expect(column()).toEqual(['']);
+  });
+});
+
 describe('editing commands', () => {
   it('sorts by the column asked for, wherever the cursor is', () => {
     load('n,word\n2,pear\n1,fig\n3,apple\n');

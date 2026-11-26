@@ -37,6 +37,7 @@
     folder: 'M3 6h6l2 2h10v11H3z',
     hash: 'M5 9h14M5 15h14M10 4 8 20M16 4l-2 16',
     warning: 'M12 4 2 20h20L12 4Zm0 6v5m0 3h.01',
+    external: 'M14 5h5v5M19 5l-9 9M11 6H6v12h12v-5',
   };
   let { name, size = 16 }: { name: string; size?: number } = $props();
   let d = $derived(PATHS[name] ?? '');
