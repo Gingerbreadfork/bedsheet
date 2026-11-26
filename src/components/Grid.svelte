@@ -117,12 +117,22 @@
   }
 
   function rowSelected(vr: number): boolean {
-    return rowRuns.some((run) => vr >= run.r0 && vr <= run.r1);
+    let lo = 0;
+    let hi = rowRuns.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const run = rowRuns[mid];
+      if (vr < run.r0) hi = mid - 1;
+      else if (vr > run.r1) lo = mid + 1;
+      else return true;
+    }
+    return false;
   }
 
   let selRects = $derived.by(() => {
     if (rowCount === 0 || colCount === 0) return [];
-    return blocks.map((b) => {
+    const shown = blocks.filter((b) => b.r1 >= firstRow && b.r0 <= lastRow && b.c1 >= firstCol && b.c0 <= lastCol);
+    return shown.map((b) => {
       const top = nearView(b.r0 * rowH);
       const bottom = nearView((b.r1 + 1) * rowH);
       return {

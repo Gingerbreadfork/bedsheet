@@ -82,7 +82,7 @@ export class GridState {
   pickedCols = $state.raw<number[]>([]);
   /** Runs of whole rows selected by Ctrl-clicking their numbers, besides the range's own rows. */
   pickedRows = $state.raw<RowRun[]>([]);
-  /** Blocks of cells selected by Ctrl-clicking or Ctrl-dragging, besides the range, newest first. */
+  /** Blocks of cells selected by Ctrl-clicking or Ctrl-dragging, besides the range, newest first. No two overlap. */
   pickedBlocks = $state.raw<Range[]>([]);
   #viewRows = $state.raw<number[] | null>(null);
   /** The column the rows were last sorted by, until something reorders them again. */
@@ -185,11 +185,7 @@ export class GridState {
       return this.rowRuns.flatMap((rows) => cols.map((c) => ({ r0: rows.r0, c0: c.c0, r1: rows.r1, c1: c.c1 })));
     }
     const out: Range[] = [range];
-    for (const b of this.pickedBlocks) {
-      let pieces = [b];
-      for (const prior of [...out]) pieces = pieces.flatMap((p) => subtract(p, prior));
-      out.push(...pieces);
-    }
+    for (const b of this.pickedBlocks) out.push(...subtract(b, range));
     return out;
   }
 
@@ -242,12 +238,15 @@ export class GridState {
       const cols = this.selectedColIndices;
       return this.selectedViewRows.map((r) => ({ r, cols }));
     }
-    const blocks = this.blocks;
-    return this.selectedViewRows.map((r) => {
-      const cols = new Set<number>();
-      for (const b of blocks) if (r >= b.r0 && r <= b.r1) for (let c = b.c0; c <= b.c1; c++) cols.add(c);
-      return { r, cols: [...cols].sort((a, b) => a - b) };
-    });
+    const byRow = new Map<number, number[]>();
+    for (const b of this.blocks) {
+      for (let r = b.r0; r <= b.r1; r++) {
+        let cols = byRow.get(r);
+        if (!cols) byRow.set(r, (cols = []));
+        for (let c = b.c0; c <= b.c1; c++) cols.push(c);
+      }
+    }
+    return [...byRow].sort((a, b) => a[0] - b[0]).map(([r, cols]) => ({ r, cols: cols.sort((a, b) => a - b) }));
   }
 
   /** The selected columns as runs of neighbours, left to right. */
@@ -404,7 +403,7 @@ export class GridState {
     if (rest.length === 0) return true;
     const a = this.anchor.r;
     const below = hit.r1 > r ? r + 1 : runs.find((run) => run.r0 > r)?.r0;
-    const keep = a !== r ? a : (below ?? Math.max(...rest.map((run) => run.r1)));
+    const keep = a !== r ? a : (below ?? rest.reduce((last, run) => Math.max(last, run.r1), 0));
     this.selectRowRuns(rest, keep);
     return false;
   }
@@ -466,14 +465,15 @@ export class GridState {
     return false;
   }
 
-  /** Whether `blocks` cover every cell of `block`. */
+  /** Whether `blocks`, none overlapping another, cover every cell of `block`. */
   private isCovered(blocks: Range[], block: Range): boolean {
-    let left = [block];
+    let left = (block.r1 - block.r0 + 1) * (block.c1 - block.c0 + 1);
     for (const b of blocks) {
-      left = left.flatMap((p) => subtract(p, b));
-      if (left.length === 0) return true;
+      const rows = Math.min(b.r1, block.r1) - Math.max(b.r0, block.r0) + 1;
+      const cols = Math.min(b.c1, block.c1) - Math.max(b.c0, block.c0) + 1;
+      if (rows > 0 && cols > 0) left -= rows * cols;
     }
-    return false;
+    return left === 0;
   }
 
   /** Stretches the selection to the whole rows it touches; rows that are apart stay apart. */
