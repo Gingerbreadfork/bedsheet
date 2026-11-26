@@ -244,9 +244,10 @@ row are padded with empty cells.
 The grid is the product, so everything else is built to recede.
 
 The reference is ledger paper. The surface is a faintly green-tinted paper tone, cells sit on
-hairline rules, and row numbers are set in a monospace face like a printed ledger. The
-empty screen is ruled paper with a red margin line, and recent files sit on the lines like
-entries.
+hairline rules, and row numbers are set in a monospace face like a printed ledger.
+
+The launch screen is the one place with some character. The ghost from the icon floats above
+the three ways to start, and your recent files are listed in a panel beside it.
 
 The active cell is outlined in ink black rather than the usual blue, so it reads instantly
 against any data. Range selection is a soft wash of the single accent color, a verdigris

@@ -38,6 +38,7 @@
     hash: 'M5 9h14M5 15h14M10 4 8 20M16 4l-2 16',
     warning: 'M12 4 2 20h20L12 4Zm0 6v5m0 3h.01',
     external: 'M14 5h5v5M19 5l-9 9M11 6H6v12h12v-5',
+    clipboard: 'M9 4h6v3H9zM9 5.5H6V20h12V5.5h-3M9.5 12h5M9.5 15.5h3',
   };
   let { name, size = 16 }: { name: string; size?: number } = $props();
   let d = $derived(PATHS[name] ?? '');
