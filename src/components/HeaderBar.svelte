@@ -28,6 +28,14 @@
       { label: 'Command palette', shortcut: 'Ctrl+K', run: () => (app.paletteOpen = true) },
       { label: 'Keyboard shortcuts', shortcut: 'Ctrl+/', run: () => (app.shortcutsOpen = true) },
     ];
+    if (app.updatable) {
+      items.push('sep');
+      if (app.newRelease) items.push({ label: app.updateLabel, run: () => void app.getUpdate() });
+      items.push(
+        { label: 'Check for updates', run: () => void app.checkForUpdates() },
+        { label: 'Check automatically', checked: app.autoUpdates, run: () => app.toggleAutoUpdates() },
+      );
+    }
     if (isTauri) items.push('sep', { label: 'Quit', shortcut: 'Ctrl+Q', run: () => app.quit() });
     app.openMenu({ x: r.right, y: r.bottom + 4, align: 'right', width: 248, items });
   }

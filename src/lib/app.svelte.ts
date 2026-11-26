@@ -22,12 +22,18 @@ import {
   fileStamp,
   sameStamp,
   recovery,
+  inFlatpak,
+  openProjectPage,
+  otherWindows,
+  canSelfUpdate,
+  fetchUpdate,
   type ClipContents,
   type FileStamp,
   type OpenedFile,
   type RecentEntry,
 } from './platform';
 import { baseName } from './paths';
+import { isNewer, isRelease, latestRelease, type Release } from './update';
 
 export type Theme = 'system' | 'light' | 'dark';
 export type Group = 'File' | 'Edit' | 'Rows' | 'Columns' | 'Find' | 'View' | 'Help';
@@ -107,6 +113,12 @@ export interface Toast {
   id: number;
   text: string;
   kind: 'info' | 'success' | 'error';
+  action?: ToastAction;
+}
+
+export interface ToastAction {
+  label: string;
+  run: () => void;
 }
 
 /** Tests a cell for the query and replaces it there by the same rules, so every match can be replaced. */
@@ -117,6 +129,10 @@ interface Finder {
 
 const LARGE_FILE_BYTES = 256 * 1024 * 1024;
 const RECOVERY_IDLE_MS = 5000;
+/** How often the app looks for a new release on its own. */
+const UPDATE_CHECK_EVERY = 12 * 60 * 60 * 1000;
+/** How long it waits after a check that failed. */
+const UPDATE_RETRY_AFTER = 30 * 60 * 1000;
 
 function formatSize(bytes: number): string {
   const mb = bytes / (1024 * 1024);
@@ -153,6 +169,16 @@ export class AppState {
   maximized = $state(false);
   busy = $state<string | null>(null);
 
+  /** Whether this copy fetches its own updates: the desktop app, outside a Flatpak. */
+  updatable = $state(false);
+  /** Running inside a Flatpak, which delivers updates itself. */
+  flatpak = $state(false);
+  autoUpdates = $state(loadSetting('updates.auto', true));
+  /** A release newer than this build, once one is known. */
+  newRelease = $state.raw<Release | null>(null);
+  /** How much of an update has been downloaded, from 0 to 1, while one is being fetched. */
+  updateProgress = $state<number | null>(null);
+
   query = $state('');
   replaceWith = $state('');
   matchCase = $state(false);
@@ -186,6 +212,7 @@ export class AppState {
   private saving: Promise<unknown> = Promise.resolve();
   private activeSaves = 0;
   private waitingDialogs: (() => void)[] = [];
+  private lastUpdateTry = 0;
 
   constructor() {
     this.grid.mono = loadSetting('mono', false);
@@ -252,6 +279,7 @@ export class AppState {
   // ---------- startup ----------
 
   async init(): Promise<void> {
+    void this.startUpdates();
     const files = await launchFiles();
     if (files.length > 0) await this.openPath(files[0]);
     await this.offerRecovery();
@@ -332,14 +360,16 @@ export class AppState {
 
   // ---------- toasts, dialogs, menus ----------
 
-  toast(text: string, kind: Toast['kind'] = 'info', ms = 2200): void {
+  toast(text: string, kind: Toast['kind'] = 'info', ms = 2200, action?: ToastAction): void {
     const id = ++toastId;
-    this.toasts.push({ id, text, kind });
+    this.toasts.push({ id, text, kind, action });
     while (this.toasts.length > 3) this.toasts.shift();
-    setTimeout(() => {
-      const i = this.toasts.findIndex((t) => t.id === id);
-      if (i >= 0) this.toasts.splice(i, 1);
-    }, ms);
+    setTimeout(() => this.dismissToast(id), ms);
+  }
+
+  dismissToast(id: number): void {
+    const i = this.toasts.findIndex((t) => t.id === id);
+    if (i >= 0) this.toasts.splice(i, 1);
   }
 
   openMenu(state: MenuState): void {
@@ -1543,6 +1573,124 @@ export class AppState {
     g.select(vr, g.anchor.c);
   }
 
+  // ---------- updates ----------
+
+  /** What getting the new release involves: it installs in place on Windows and is downloaded by hand elsewhere. */
+  get updateLabel(): string {
+    return `${canSelfUpdate ? 'Install' : 'Get'} Bedsheet ${this.newRelease?.version ?? ''}`;
+  }
+
+  /** Starts looking for new releases, where the app is what fetches them. */
+  private async startUpdates(): Promise<void> {
+    if (!isTauri) return;
+    const sandboxed = await inFlatpak().catch(() => null);
+    this.flatpak = sandboxed === true;
+    if (sandboxed !== false) return;
+    this.updatable = true;
+    const known = loadSetting<unknown>('updates.release', null);
+    if (isRelease(known)) this.noteRelease(known, false);
+    void this.checkForUpdateQuietly();
+    setInterval(() => void this.checkForUpdateQuietly(), 60 * 60 * 1000);
+  }
+
+  /** Takes in the newest release there is. One newer than this build is announced once, or once more when `again` is set. */
+  private noteRelease(release: Release, again: boolean): void {
+    const newer = isNewer(release.version, __APP_VERSION__);
+    this.newRelease = newer ? release : null;
+    if (!newer || (!again && loadSetting('updates.announced', '') === release.version)) return;
+    saveSetting('updates.announced', release.version);
+    const action = { label: canSelfUpdate ? 'Install' : 'See it', run: () => void this.getUpdate() };
+    this.toast(`Bedsheet ${release.version} is out`, 'info', 12000, action);
+  }
+
+  private async findRelease(again: boolean): Promise<void> {
+    const latest = await latestRelease();
+    saveSetting('updates.checkedAt', Date.now());
+    saveSetting('updates.release', latest);
+    this.noteRelease(latest, again);
+  }
+
+  /**
+   * The check the app makes on its own, at startup and every twelve hours. Every window shares
+   * the time of the last one, so opening several files asks only once.
+   */
+  private async checkForUpdateQuietly(): Promise<void> {
+    const now = Date.now();
+    const sinceCheck = Math.abs(now - loadSetting('updates.checkedAt', 0));
+    if (!this.autoUpdates || sinceCheck < UPDATE_CHECK_EVERY || now - this.lastUpdateTry < UPDATE_RETRY_AFTER) return;
+    this.lastUpdateTry = now;
+    await this.findRelease(false).catch(() => {});
+  }
+
+  /** The check made by hand, which always says what it found. */
+  async checkForUpdates(): Promise<void> {
+    if (!this.updatable) return;
+    try {
+      await this.findRelease(true);
+      if (!this.newRelease) this.toast('Bedsheet is up to date', 'success');
+    } catch (e) {
+      this.toast(`Couldn’t check for updates: ${e instanceof Error ? e.message : String(e)}`, 'error', 4000);
+    }
+  }
+
+  /** Turns the regular checks on or off. `announce` says so in a toast, for where the switch itself can't be seen. */
+  toggleAutoUpdates(announce = true): void {
+    this.autoUpdates = !this.autoUpdates;
+    saveSetting('updates.auto', this.autoUpdates);
+    if (announce) this.toast(this.autoUpdates ? 'Checking for updates automatically' : 'No longer checking for updates automatically');
+    if (this.autoUpdates) void this.checkForUpdateQuietly();
+  }
+
+  /** Installs the new release where the app can, and opens its page everywhere else. */
+  async getUpdate(): Promise<void> {
+    const release = this.newRelease;
+    if (!release || this.updateProgress !== null) return;
+    if (canSelfUpdate) await this.installUpdate(release);
+    else await this.showRelease(release);
+  }
+
+  /** Opens a page of the project on GitHub in the browser: its front page, or the path below it. */
+  async openPage(page = ''): Promise<void> {
+    try {
+      await openProjectPage(page);
+    } catch (e) {
+      this.toast(`Couldn’t open the page in your browser: ${String(e)}`, 'error', 4000);
+    }
+  }
+
+  private showRelease(release: Release): Promise<void> {
+    return this.openPage(`releases/tag/${release.tag}`);
+  }
+
+  /**
+   * Downloads the installer, settles unsaved work the way quitting does, then hands over to the
+   * installer, which closes the app and starts the new version.
+   */
+  private async installUpdate(release: Release): Promise<void> {
+    const seeIt = { label: 'See it', run: () => void this.showRelease(release) };
+    if ((await otherWindows().catch(() => 0)) > 0) {
+      this.toast('Close your other Bedsheet windows first. Installing an update closes them all.', 'info', 6000);
+      return;
+    }
+    this.updateProgress = 0;
+    try {
+      const install = await fetchUpdate((fraction) => (this.updateProgress = fraction));
+      if (!install) {
+        this.toast('The update isn’t ready to install yet. Try again later, or get it from the release page.', 'info', 8000, seeIt);
+        return;
+      }
+      if (!(await this.confirmDiscard())) return;
+      await this.saving;
+      await this.clearRecovery();
+      await install();
+    } catch (e) {
+      this.toast(`Couldn’t install the update: ${String(e)}`, 'error', 8000, seeIt);
+    } finally {
+      this.updateProgress = null;
+      if (this.doc.dirty) this.scheduleRecovery();
+    }
+  }
+
   // ---------- view ----------
 
   setTheme(t: Theme): void {
@@ -1676,6 +1824,15 @@ export class AppState {
 
       { id: 'help.palette', title: 'Command palette', group: 'Help', shortcut: 'Ctrl+K', altShortcuts: ['Ctrl+Shift+P'], global: true, run: () => (this.paletteOpen = !this.paletteOpen) },
       { id: 'help.shortcuts', title: 'Keyboard shortcuts', group: 'Help', shortcut: 'Ctrl+/', global: true, run: () => this.toggleShortcuts() },
+      { id: 'help.getUpdate', title: () => this.updateLabel, group: 'Help', when: () => this.newRelease !== null, run: () => this.getUpdate() },
+      { id: 'help.checkUpdates', title: 'Check for updates', group: 'Help', when: () => this.updatable, run: () => this.checkForUpdates() },
+      {
+        id: 'help.autoUpdates',
+        title: () => (this.autoUpdates ? 'Stop checking for updates automatically' : 'Check for updates automatically'),
+        group: 'Help',
+        when: () => this.updatable,
+        run: () => this.toggleAutoUpdates(),
+      },
     ];
   }
 }

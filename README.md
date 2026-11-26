@@ -100,6 +100,18 @@ machine doesn't have it.
 The packages register Bedsheet as a handler for `.csv` and `.tsv` files, so it shows up in
 "Open with" in your file manager.
 
+### Updates
+
+Bedsheet looks for a new version when it starts and every twelve hours while it runs. It asks
+GitHub for the latest version number and sends nothing about you or your files. When there is
+a newer one, "Update available" appears in the status bar. On Windows, clicking it installs
+the new version and restarts Bedsheet. Close your other Bedsheet windows first, because the
+installer closes them all. On Linux it opens the release page, where you can fetch the new
+package.
+
+"Check for updates" in the menu asks on the spot, and "Check automatically" turns the regular
+checks off. A copy installed as a Flatpak leaves updates to Flatpak.
+
 ## Using it
 
 ```sh
@@ -302,6 +314,14 @@ cargo test --manifest-path src-tauri/Cargo.toml   # file saving tests
 
 `pnpm dev` runs the interface alone in a browser, with file access falling back to the
 browser's picker and downloads. That's handy for working on the grid.
+
+Pushing a `v*` tag builds the packages and attaches them to a draft release. The Windows
+installers are signed for in-app updates when the repository has the secrets
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and the release then
+carries `latest.json`, the feed installed copies read. `pnpm tauri signer generate -w
+~/.tauri/bedsheet.key` makes a key. Its public half lives in
+`src-tauri/tauri.windows.conf.json`, so a new key means installed copies have to be updated
+by hand once. Without the secrets the installers still build but cannot update themselves.
 
 On distributions with recent binutils, linuxdeploy's bundled `strip` can't read the system
 libraries it copies into the AppImage. If the AppImage step fails, build with

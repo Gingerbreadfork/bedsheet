@@ -1,14 +1,22 @@
 <script lang="ts">
-  import { app } from '../lib/app.svelte';
+  import { app, type Toast } from '../lib/app.svelte';
   import Icon from './Icon.svelte';
+
+  function act(t: Toast): void {
+    app.dismissToast(t.id);
+    t.action?.run();
+  }
 </script>
 
 <div class="toasts" aria-live="polite">
   {#each app.toasts as t (t.id)}
-    <div class="toast {t.kind}">
+    <div class="toast {t.kind}" class:acts={t.action}>
       {#if t.kind === 'success'}<span class="ico"><Icon name="check" size={14} /></span>{/if}
       {#if t.kind === 'error'}<span class="ico"><Icon name="warning" size={14} /></span>{/if}
       <span>{t.text}</span>
+      {#if t.action}
+        <button class="act" onclick={() => act(t)}>{t.action.label}</button>
+      {/if}
     </div>
   {/each}
 </div>
@@ -38,6 +46,21 @@
     font-weight: 500;
     box-shadow: 0 6px 20px -6px oklch(0% 0 0 / 0.4);
     animation: rise 200ms var(--ease-spring);
+  }
+  .toast.acts {
+    padding-right: 6px;
+    pointer-events: auto;
+  }
+  .act {
+    padding: 3px 11px;
+    border-radius: 999px;
+    background: color-mix(in oklch, currentColor 16%, transparent);
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background var(--t-fast) var(--ease-out);
+  }
+  .act:hover {
+    background: color-mix(in oklch, currentColor 28%, transparent);
   }
   .toast.success .ico {
     color: var(--accent);

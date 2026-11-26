@@ -118,6 +118,11 @@
     {/if}
   </div>
   <div class="right">
+    {#if app.updateProgress !== null}
+      <span class="stat" role="status">Downloading update {Math.round(app.updateProgress * 100)}%</span>
+    {:else if app.newRelease}
+      <button class="chip update" title={app.updateLabel} onclick={() => app.getUpdate()}>Update available</button>
+    {/if}
     {#if doc.loaded}
       <button class="chip" title="Delimiter" onclick={delimiterMenu}>
         {delimiterLabel(doc.delimiter)}
@@ -239,6 +244,14 @@
     margin-left: -8px;
     color: var(--accent);
     background: var(--accent-soft);
+  }
+  .chip.update {
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .chip.update:hover {
+    color: var(--accent);
+    background: var(--accent-soft-2);
   }
   .chip kbd {
     height: 16px;

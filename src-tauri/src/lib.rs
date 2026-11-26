@@ -237,6 +237,22 @@ fn owner_is_running(dir: &Path, owner: &str) -> bool {
     File::open(lock_file(dir, owner)).is_ok_and(|file| file.try_lock().is_err())
 }
 
+/// Counts the other instances that hold a lock in the recovery directory.
+fn other_owners_running(dir: &Path, own: &str) -> usize {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .filter(|entry| {
+            let name = entry.file_name();
+            name.to_string_lossy()
+                .strip_suffix(".lock")
+                .is_some_and(|owner| owner != own && owner_is_running(dir, owner))
+        })
+        .count()
+}
+
 /// Removes the lock file of an owner that has exited. The lock is held while the file goes, so an
 /// instance that had only just made it finds out and makes another.
 fn remove_dead_lock(dir: &Path, owner: &str) {
@@ -326,6 +342,44 @@ fn recovery_clear(app: tauri::AppHandle, id: String) -> Result<(), String> {
 fn recovery_pending(app: tauri::AppHandle) -> Result<Vec<RecoveryEntry>, String> {
     let dir = recovery_dir(&app)?;
     Ok(claim_recovery_files(&dir, &recovery_owner(&dir)?))
+}
+
+/// How many other Bedsheet windows are open. Each is its own process, and installing an update
+/// would close them all.
+#[tauri::command(async)]
+fn other_windows(app: tauri::AppHandle) -> Result<usize, String> {
+    let dir = recovery_dir(&app)?;
+    Ok(other_owners_running(&dir, &recovery_owner(&dir)?))
+}
+
+/// True inside a Flatpak, where updates come through Flatpak instead of the app.
+#[tauri::command]
+fn in_flatpak() -> bool {
+    std::env::var_os("FLATPAK_ID").is_some_and(|id| !id.is_empty())
+}
+
+const REPOSITORY: &str = "https://github.com/Gingerbreadfork/bedsheet";
+
+/// The address of a page of the project on GitHub, or None when `page` could lead anywhere else.
+/// `page` is the path below the repository, and empty for its front page.
+fn project_url(page: &str) -> Option<String> {
+    let plain = !page.starts_with('/')
+        && !page.contains("..")
+        && !page.contains("//")
+        && page
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'+' | b'/'));
+    plain.then(|| match page {
+        "" => REPOSITORY.to_string(),
+        _ => format!("{REPOSITORY}/{page}"),
+    })
+}
+
+/// Opens a page of the project on GitHub in the browser.
+#[tauri::command]
+fn open_project_page(page: String) -> Result<(), String> {
+    let url = project_url(&page).ok_or("not a page of this project")?;
+    open::that_detached(url).map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -486,9 +540,13 @@ fn open_extra_files() {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     open_extra_files();
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::new().build());
+    // Only the Windows installers can replace a running copy.
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    builder
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
@@ -497,6 +555,9 @@ pub fn run() {
             recovery_save,
             recovery_clear,
             recovery_pending,
+            other_windows,
+            in_flatpak,
+            open_project_page,
             clipboard_read,
             clipboard_write
         ])
@@ -555,6 +616,47 @@ mod tests {
         assert!(!lock_file(&dir, "gone").exists());
         assert!(lock_file(&dir, "live").exists());
         assert!(claim_recovery_files(&dir, "mine").is_empty());
+    }
+
+    #[test]
+    fn counts_the_other_instances_still_running() {
+        let dir = scratch("others");
+        let live = File::create(lock_file(&dir, "live")).unwrap();
+        live.try_lock().unwrap();
+        let own = File::create(lock_file(&dir, "mine")).unwrap();
+        own.try_lock().unwrap();
+        File::create(lock_file(&dir, "gone")).unwrap();
+        fs::write(recovery_file(&dir, "gone", "abc").unwrap(), "{}").unwrap();
+        assert_eq!(other_owners_running(&dir, "mine"), 1);
+        drop(live);
+        assert_eq!(other_owners_running(&dir, "mine"), 0);
+        assert_eq!(other_owners_running(&dir.join("missing"), "mine"), 0);
+    }
+
+    #[test]
+    fn opens_only_pages_of_its_own_project() {
+        assert_eq!(
+            project_url("").as_deref(),
+            Some("https://github.com/Gingerbreadfork/bedsheet")
+        );
+        assert_eq!(
+            project_url("releases/tag/v1.0.0-beta.1+build_2").as_deref(),
+            Some("https://github.com/Gingerbreadfork/bedsheet/releases/tag/v1.0.0-beta.1+build_2")
+        );
+        let elsewhere = [
+            "..",
+            "issues/../../other",
+            "/evil.example",
+            "issues//x",
+            "issues?x=1",
+            "issues#top",
+            "@evil.example",
+            "issues new",
+            "issues\n",
+        ];
+        for page in elsewhere {
+            assert!(project_url(page).is_none(), "{page:?}");
+        }
     }
 
     #[test]

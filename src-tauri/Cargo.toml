@@ -22,6 +22,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"
 percent-encoding = "2"
 dunce = "1"
+open = { version = "5", features = ["shellexecute-on-windows"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
@@ -31,6 +32,7 @@ arboard = { version = "3", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+tauri-plugin-updater = "2"
 
 [profile.release]
 panic = "abort"

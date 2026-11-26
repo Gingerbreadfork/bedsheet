@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/windows-schema.json",
+  "identifier": "windows",
+  "description": "Lets the Windows build install its own updates",
+  "windows": ["main"],
+  "platforms": ["windows"],
+  "permissions": ["updater:default"]
+}

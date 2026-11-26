@@ -133,6 +133,48 @@ export async function launchFiles(): Promise<string[]> {
   }
 }
 
+/** True inside a Flatpak, which delivers updates itself. */
+export async function inFlatpak(): Promise<boolean> {
+  return isTauri ? invoke<boolean>('in_flatpak') : false;
+}
+
+const REPOSITORY = 'https://github.com/Gingerbreadfork/bedsheet';
+
+/** Opens a page of the project on GitHub in the browser. `page` is the path below the repository, and empty for its front page. */
+export async function openProjectPage(page = ''): Promise<void> {
+  if (isTauri) await invoke('open_project_page', { page });
+  else window.open(page ? `${REPOSITORY}/${page}` : REPOSITORY, '_blank', 'noopener');
+}
+
+/** How many other Bedsheet windows are open. Each is a separate copy of the app. */
+export async function otherWindows(): Promise<number> {
+  return isTauri ? invoke<number>('other_windows') : 0;
+}
+
+/** True where the app can install a release over itself, which only the Windows installers support. */
+export const canSelfUpdate = isTauri && isWindows;
+
+/**
+ * Downloads the signed installer for the newest release, reporting progress from 0 to 1. Gives
+ * back the step that installs it, which closes the app and starts the new version, or null when
+ * the update feed has nothing newer.
+ */
+export async function fetchUpdate(onProgress: (fraction: number) => void): Promise<(() => Promise<void>) | null> {
+  const { check } = await import('@tauri-apps/plugin-updater');
+  const update = await check();
+  if (!update) return null;
+  let total = 0;
+  let got = 0;
+  await update.download((e) => {
+    if (e.event === 'Started') total = e.data.contentLength ?? 0;
+    else if (e.event === 'Progress') {
+      got += e.data.chunkLength;
+      if (total > 0) onProgress(Math.min(1, got / total));
+    }
+  });
+  return () => update.install();
+}
+
 /** Unsaved work written aside so it can be offered back after a crash. */
 export interface RecoverySnapshot {
   name: string;
